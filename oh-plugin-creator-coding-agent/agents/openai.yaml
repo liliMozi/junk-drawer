@@ -1,0 +1,6 @@
+interface:
+  display_name: "OH Plugin Creator Coding Agent"
+  short_description: "Build OH/Hana plugins with UI, Session, Agent, model, and media APIs"
+  default_prompt: "Use $oh-plugin-creator-coding-agent to design, implement, verify, and prepare an OH/Hana plugin with the right SDK capabilities for local install or OH-Plugins marketplace publication."
+policy:
+  allow_implicit_invocation: false

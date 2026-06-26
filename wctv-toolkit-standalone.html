@@ -1,0 +1,2718 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WCTV · 世界杯电视台</title>
+  ">` : ""}
+  <style>/* ============================================================
+ * WCTV · 世界杯电视台
+ * 老电视视觉系统：扫描线 + 噪点 + 视频背景（低饱和度）+ 跑马灯
+ * Tab 切换：0.18s 纯 opacity（无 translateY，告别残留拖影）
+ * ============================================================ */
+
+:root {
+  --bg: #0a0e1a;
+  --screen: #131825;
+  --screen-light: #1a2030;
+  --primary: #ff6b35;
+  --secondary: #00d9ff;
+  --highlight: #ffcb05;
+  --text: #e8e8e8;
+  --text-dim: #6a7080;
+  --signal: #ff0033;
+  --border: #2a2f3e;
+  --mono: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace;
+  --sans: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { min-height: 100%; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  padding-bottom: 50px;
+}
+
+/* ========== 视频背景层（MP4 占位，用户后续提供） ========== */
+.video-background {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--bg);
+  pointer-events: none;
+}
+.video-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+.video-background video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(0.55) saturate(0.6) brightness(0.75);
+  opacity: 0.75;
+  background: transparent !important;
+  position: relative;
+  z-index: 1;
+}
+.video-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg,
+      rgba(10, 14, 26, 0.35) 0%,
+      rgba(10, 14, 26, 0.15) 50%,
+      rgba(10, 14, 26, 0.45) 100%),
+    radial-gradient(ellipse at center,
+      transparent 50%,
+      rgba(10, 14, 26, 0.35) 100%);
+}
+.video-background:not(.has-video)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 107, 53, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(0, 217, 255, 0.04) 0%, transparent 50%);
+}
+
+/* 独立版像素足球场背景 */
+.pixel-pitch-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(0, 80, 0, 0.08) 0px,
+      rgba(0, 80, 0, 0.08) 40px,
+      rgba(0, 100, 0, 0.06) 40px,
+      rgba(0, 100, 0, 0.06) 80px),
+    repeating-linear-gradient(0deg,
+      rgba(0, 60, 0, 0.05) 0px,
+      rgba(0, 60, 0, 0.05) 40px,
+      rgba(0, 90, 0, 0.04) 40px,
+      rgba(0, 90, 0, 0.04) 80px),
+    radial-gradient(ellipse at center,
+      rgba(0, 120, 0, 0.08) 0%,
+      transparent 70%);
+  opacity: 0.6;
+}
+
+/* ========== 老电视特效层 ========== */
+.scanlines {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background: linear-gradient(transparent 50%, rgba(0, 0, 0, 0.18) 50%);
+  background-size: 100% 3px;
+  opacity: 0.22;
+  animation: scanlineShift 8s linear infinite;
+}
+@keyframes scanlineShift {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 6px; }
+}
+
+.noise {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 9997;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  animation: noiseFlicker 0.18s steps(3) infinite;
+}
+@keyframes noiseFlicker {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(-2px, 1px); }
+  66% { transform: translate(1px, -1px); }
+}
+
+.vignette {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 9996;
+  background: radial-gradient(ellipse at center,
+    transparent 65%,
+    rgba(0, 0, 0, 0.3) 100%);
+}
+
+/* ========== 顶部台标 ========== */
+.tv-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(10, 14, 26, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 2px solid var(--border);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.logo-circle {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--primary), var(--highlight));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  border: 2px solid var(--text);
+  box-shadow: 0 0 20px rgba(255, 107, 53, 0.5);
+  animation: logoPulse 4s ease-in-out infinite;
+}
+@keyframes logoPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 107, 53, 0.5); }
+  50% { box-shadow: 0 0 30px rgba(255, 107, 53, 0.7); }
+}
+.logo-text {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--text);
+  letter-spacing: 3px;
+  line-height: 1;
+}
+.logo-sub {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 4px;
+  margin-top: 3px;
+}
+.header-info {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--signal);
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+.live-indicator::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  background: var(--signal);
+  border-radius: 50%;
+  animation: blink 1.5s infinite;
+  box-shadow: 0 0 8px var(--signal);
+}
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.2; }
+}
+.clock {
+  color: var(--highlight);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(255, 203, 5, 0.4);
+}
+.rec-views { color: var(--text-dim); }
+
+/* ========== 主布局 ========== */
+.tv-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 32px 80px;
+}
+
+/* ========== 频道导航 ========== */
+.channel-nav {
+  position: sticky;
+  top: 88px;
+  align-self: start;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.nav-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+  padding-left: 12px;
+}
+.channel-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  background: rgba(19, 24, 37, 0.7);
+  text-decoration: none;
+  color: var(--text);
+  user-select: none;
+}
+.channel-item:hover {
+  background: rgba(26, 32, 48, 0.85);
+  border-color: var(--secondary);
+  transform: translateX(4px);
+}
+.channel-item.active {
+  background: var(--highlight);
+  color: var(--bg);
+  border-color: var(--primary);
+  box-shadow: 0 0 20px rgba(255, 203, 5, 0.3);
+}
+.ch-num {
+  font-family: var(--mono);
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.7;
+  letter-spacing: 1px;
+}
+.ch-icon { font-size: 18px; }
+.ch-label {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+.nav-footer {
+  margin-top: 24px;
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  border-top: 1px dashed var(--border);
+}
+.kbd {
+  display: inline-block;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--text);
+  margin: 0 2px;
+  font-family: var(--mono);
+}
+
+/* ========== 主显示区 ========== */
+.screen-frame {
+  background: rgba(19, 24, 37, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 217, 255, 0.05),
+    0 20px 60px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  min-height: 600px;
+  position: relative;
+}
+
+/* ========== 节目块 ========== */
+.show { display: none; }
+.show.active {
+  display: block;
+  animation: channelFadeIn 0.18s ease-out;
+}
+@keyframes channelFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.show-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 28px;
+  border-bottom: 2px solid var(--border);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.3), transparent);
+  flex-wrap: wrap;
+}
+.ch-badge {
+  font-family: var(--mono);
+  font-weight: 900;
+  font-size: 14px;
+  color: var(--bg);
+  background: var(--highlight);
+  padding: 4px 12px;
+  border-radius: 3px;
+  letter-spacing: 2px;
+}
+.show-title {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 1px;
+  color: var(--text);
+  flex: 1;
+  min-width: 200px;
+}
+.show-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.live-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--signal);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.live-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--signal);
+  border-radius: 50%;
+  animation: blink 1.5s infinite;
+}
+.show-body { padding: 32px; }
+.show-desc {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed var(--border);
+  letter-spacing: 0.5px;
+  line-height: 1.7;
+}
+
+/* ========== 表单元素 ========== */
+.input-box {
+  width: 100%;
+  padding: 14px 20px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--sans);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-box:focus {
+  outline: none;
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
+}
+.input-box::placeholder { color: var(--text-dim); }
+.input-box:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--bg);
+  border: none;
+  padding: 12px 28px;
+  font-weight: 900;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: var(--mono);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
+  white-space: nowrap;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--highlight);
+  transform: translateY(-1px);
+  box-shadow: 0 0 30px rgba(255, 203, 5, 0.4);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(0); }
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: var(--mono);
+  letter-spacing: 1px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-secondary:hover {
+  border-color: var(--secondary);
+  color: var(--secondary);
+}
+
+/* ========== Pill 标签 ========== */
+.pill {
+  padding: 7px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+  font-size: 13px;
+  font-family: var(--sans);
+  user-select: none;
+  color: var(--text);
+}
+.pill:hover {
+  background: var(--screen-light);
+  border-color: var(--secondary);
+}
+.pill.active {
+  background: var(--highlight);
+  color: var(--bg);
+  border-color: var(--highlight);
+  box-shadow: 0 0 10px rgba(255, 203, 5, 0.3);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ========== 输出卡 ========== */
+.output-card {
+  margin-top: 20px;
+  padding: 20px 24px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 4px;
+}
+
+/* ========== 翻译器输出（类比卡） ========== */
+.translate-card {
+  background: var(--highlight);
+  color: var(--bg);
+  padding: 18px 22px;
+  border-radius: 4px;
+  margin-top: 12px;
+  position: relative;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.translate-card::before {
+  content: 'CH 01';
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  opacity: 0.4;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+.tc-title {
+  font-weight: 900;
+  font-size: 17px;
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+}
+.tc-body {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* ========== Loading / Error 状态 ========== */
+.ai-loading {
+  margin-top: 20px;
+  padding: 32px;
+  text-align: center;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+}
+.ai-loading-spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.ai-loading-text {
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--highlight);
+}
+
+.ai-error {
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: rgba(255, 0, 51, 0.1);
+  border: 1px solid var(--signal);
+  border-left: 4px solid var(--signal);
+  border-radius: 4px;
+  color: var(--signal);
+  font-size: 13px;
+}
+
+/* ========== 国足预测 ========== */
+.guozu-headline {
+  background: linear-gradient(135deg, var(--primary), var(--signal));
+  color: var(--bg);
+  padding: 36px 24px;
+  border-radius: 6px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.guozu-headline::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(45deg, transparent, transparent 20px, rgba(0,0,0,0.05) 20px, rgba(0,0,0,0.05) 40px);
+}
+.guozu-headline > * { position: relative; z-index: 1; }
+.gh-meta-line {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 2px;
+  opacity: 0.9;
+}
+.gh-age {
+  font-family: var(--mono);
+  font-size: 84px;
+  font-weight: 900;
+  line-height: 1;
+  margin: 8px 0;
+}
+.gh-label { font-size: 16px; font-weight: 700; letter-spacing: 1px; }
+.gh-year {
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-top: 12px;
+  opacity: 0.85;
+  letter-spacing: 1px;
+}
+
+.progress {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  height: 26px;
+  overflow: hidden;
+  position: relative;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--highlight));
+  transition: width 1.5s ease;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 12px;
+  color: var(--bg);
+  font-weight: 900;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.window-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.window-row:last-child { border-bottom: none; }
+.wr-year { font-weight: 900; min-width: 60px; color: var(--highlight); }
+.wr-info { flex: 1; color: var(--text-dim); }
+.wr-prob {
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 900;
+  font-size: 11px;
+}
+
+/* ========== 比赛卡 ========== */
+.match-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--secondary);
+  border-radius: 4px;
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  transition: border-color 0.2s, transform 0.15s;
+}
+.match-card:hover {
+  border-color: var(--secondary);
+  transform: translateX(4px);
+}
+.match-teams {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+.match-reason {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+.match-tag {
+  display: inline-block;
+  background: var(--secondary);
+  color: var(--bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+/* ========== 夜宵 ========== */
+.food-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  transition: border-color 0.2s, transform 0.15s;
+}
+.food-item:hover {
+  border-color: var(--highlight);
+  transform: translateX(4px);
+}
+.food-emoji { font-size: 32px; }
+.food-name { font-weight: 900; font-size: 15px; }
+.food-desc { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+
+/* ========== 实时信号台 · 倒计时 ========== */
+.countdown {
+  margin-bottom: 24px;
+  padding: 24px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.cd-meta {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--highlight);
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+.cd-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.cd-cell {
+  background: var(--screen);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 8px;
+  text-align: center;
+}
+.cd-num {
+  font-family: var(--mono);
+  font-size: 32px;
+  font-weight: 900;
+  color: var(--primary);
+  text-shadow: 0 0 12px rgba(255, 107, 53, 0.4);
+  line-height: 1;
+}
+.cd-lab {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  margin-top: 6px;
+}
+
+/* ========== 实时比分卡 ========== */
+.live-card {
+  background: var(--bg);
+  border: 2px solid var(--signal);
+  border-radius: 6px;
+  padding: 20px 24px;
+  margin-top: 16px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 30px rgba(255, 0, 51, 0.15);
+}
+.live-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.lch-badge {
+  background: var(--signal);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 2px;
+  animation: blink 1.5s infinite;
+}
+.lch-min {
+  font-family: var(--mono);
+  font-weight: 900;
+  font-size: 24px;
+  color: var(--signal);
+}
+.score-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.score-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-weight: 900;
+  font-size: 18px;
+}
+.score-team.away { justify-content: flex-end; }
+.score-team .flag { font-size: 24px; }
+.score-big {
+  font-family: var(--mono);
+  font-size: 48px;
+  font-weight: 900;
+  color: var(--highlight);
+  text-shadow: 0 0 16px rgba(255, 203, 5, 0.5);
+}
+.score-vs { color: var(--text-dim); font-size: 32px; margin: 0 8px; }
+
+.poss-block { margin-bottom: 16px; }
+.poss-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.poss-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--screen-light);
+}
+.poss-home { background: var(--primary); transition: width 0.5s ease; }
+.poss-away { background: var(--secondary); transition: width 0.5s ease; }
+.poss-num {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+.poss-num strong { color: var(--text); }
+
+.stat-matrix {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 4px 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.sm-cell { font-weight: 900; font-size: 18px; color: var(--highlight); }
+.sm-cell.away { text-align: right; }
+.sm-mid {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  padding: 6px 0;
+}
+
+/* ========== 今日赛程 / 完整赛程 ========== */
+.today-item, .sc-item {
+  display: grid;
+  grid-template-columns: 60px 80px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.ti-time, .sc-time {
+  font-weight: 900;
+  color: var(--highlight);
+}
+.ti-status, .sc-badge {
+  text-align: center;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+.ti-status.live, .sc-badge.live { background: var(--signal); color: #fff; animation: blink 1.5s infinite; }
+.ti-status.finished, .sc-badge.done { background: var(--text-dim); color: var(--bg); }
+.ti-status.upcoming, .sc-badge.up { background: var(--screen-light); color: var(--text-dim); }
+.ti-teams, .sc-teams { font-weight: 700; }
+.ti-score { font-weight: 900; color: var(--highlight); text-align: right; }
+
+/* ========== 跑马灯 ========== */
+.ticker {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(10, 14, 26, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 2px solid var(--primary);
+  padding: 10px 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 13px;
+  z-index: 100;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+}
+.ticker-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--primary);
+  color: var(--bg);
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  font-weight: 900;
+  z-index: 2;
+  letter-spacing: 2px;
+  font-size: 12px;
+}
+.ticker-content {
+  display: inline-block;
+  white-space: nowrap;
+  animation: ticker 60s linear infinite;
+  padding-left: 120px;
+  color: var(--text);
+}
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+/* ========== Toast ========== */
+.toast {
+  position: fixed;
+  top: 90px;
+  right: 24px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--secondary);
+  padding: 12px 18px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  z-index: 10000;
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  max-width: 360px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+.toast.error { border-left-color: var(--signal); }
+.toast.success { border-left-color: var(--highlight); }
+
+/* ========== 响应式 ========== */
+@media (max-width: 900px) {
+  .tv-layout {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+  .channel-nav {
+    position: relative;
+    top: 0;
+    max-height: none;
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 8px;
+  }
+  .nav-title { display: none; }
+  .channel-item { flex-shrink: 0; margin-bottom: 0; }
+  .nav-footer { display: none; }
+  .show-body { padding: 20px 16px; }
+  .tv-header { padding: 12px 16px; }
+  .cd-num { font-size: 24px; }
+  .score-big { font-size: 36px; }
+}
+
+/* ========== 滚动条美化 ========== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--screen-light); }</style>
+</head>
+<body data-hana-theme="inherit" data-surface="page">
+  <!-- ========== 视频背景层（MP4 留给用户后续提供） ========== -->
+  <div class="video-background" id="videoBackground">
+    <div class="video-overlay"></div>
+    <div class="pixel-pitch-bg"></div>
+  </div>
+
+  <!-- ========== 老电视特效：扫描线 + 噪点 ========== -->
+  <div class="scanlines"></div>
+  <div class="noise"></div>
+  <div class="vignette"></div>
+
+  <!-- ========== 顶部台标 ========== -->
+  <header class="tv-header">
+    <div class="logo">
+      <div class="logo-circle">⚽</div>
+      <div>
+        <div class="logo-text">WCTV</div>
+        <div class="logo-sub">WORLD CUP TV</div>
+      </div>
+    </div>
+    <div class="header-info">
+      <span class="live-indicator">● ON AIR</span>
+      <span class="clock" id="clock">--:--:--</span>
+      <span class="rec-views">REC · <span id="recViews">12.4K</span></span>
+    </div>
+  </header>
+
+  <!-- ========== 主布局 ========== -->
+  <div class="tv-layout">
+    <!-- 频道导航 -->
+    <nav class="channel-nav" id="channelNav">
+      <div class="nav-title">▸ CHANNELS</div>
+      <a class="channel-item active" data-channel="translate" href="#translate">
+        <span class="ch-num">CH 01</span>
+        <span class="ch-icon">🔮</span>
+        <span class="ch-label">AI 翻译器</span>
+      </a>
+      <a class="channel-item" data-channel="guozu" href="#guozu">
+        <span class="ch-num">CH 02</span>
+        <span class="ch-icon">📅</span>
+        <span class="ch-label">国足预测</span>
+      </a>
+      <a class="channel-item" data-channel="keymatch" href="#keymatch">
+        <span class="ch-num">CH 03</span>
+        <span class="ch-icon">⚔️</span>
+        <span class="ch-label">关键战</span>
+      </a>
+      <a class="channel-item" data-channel="qualify" href="#qualify">
+        <span class="ch-num">CH 04</span>
+        <span class="ch-icon">📊</span>
+        <span class="ch-label">出线计算</span>
+      </a>
+      <a class="channel-item" data-channel="rookie" href="#rookie">
+        <span class="ch-num">CH 05</span>
+        <span class="ch-icon">📚</span>
+        <span class="ch-label">伪球迷速成</span>
+      </a>
+      <a class="channel-item" data-channel="food" href="#food">
+        <span class="ch-num">CH 06</span>
+        <span class="ch-icon">🍻</span>
+        <span class="ch-label">看球夜宵</span>
+      </a>
+      <a class="channel-item" data-channel="live" href="#live">
+        <span class="ch-num">CH 07</span>
+        <span class="ch-icon">📡</span>
+        <span class="ch-label">实时信号台</span>
+      </a>
+      <div class="nav-footer">
+        按 <span class="kbd">↑</span> <span class="kbd">↓</span> 切换频道
+      </div>
+    </nav>
+
+    <!-- 主显示区 -->
+    <main class="screen-frame">
+
+      <!-- ========== CH 01 · AI 翻译器 ========== -->
+      <section class="show active" data-show="translate">
+        <header class="show-header">
+          <span class="ch-badge">CH 01</span>
+          <h2 class="show-title">AI 类比翻译器 · ANALOGY TRANSLATOR</h2>
+          <div class="show-meta"><span class="live-tag">● ON AIR</span></div>
+        </header>
+        <div class="show-body">
+          <p class="show-desc">
+            ▶ 把世界杯翻译成任何领域的语言。输入领域名（王者 / 甄嬛传 / 考研 / 猫咪…），
+            或选下方预设，AI 生成 6 张类比卡。
+          </p>
+
+          <!-- 预设库 -->
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:2px;margin-bottom:8px;">
+            ▸ 预设库 PRESETS
+          </div>
+          <div class="row" id="translatePresets"></div>
+
+          <!-- 自定义领域（AI 生成） -->
+          <div class="custom-domain" style="margin-top:24px;">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--highlight);letter-spacing:2px;margin-bottom:8px;">
+              ▸ 自定义领域 · AI 生成 / CUSTOM DOMAIN
+            </div>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="customDomainInput" class="input-box"
+                     placeholder="输入任意领域：原神、考研、猫咪、职场…"
+                     style="flex:1;">
+              <button id="generateBtn" class="btn-primary">🎲 AI 生成</button>
+            </div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;letter-spacing:1px;">
+              ⚡ 调 utility 模型生成 6 张类比卡（首次 ~5s）
+            </div>
+          </div>
+
+          <!-- 输出区 -->
+          <div id="translateOutput"></div>
+        </div>
+      </section>
+
+      <!-- ========== CH 02 · 国足预测 ========== -->
+      <section class="show" data-show="guozu">
+        <header class="show-header">
+          <span class="ch-badge">CH 02</span>
+          <h2 class="show-title">国足出线预测 · GUOZU FORECAST</h2>
+          <div class="show-meta"><span class="live-tag">● ON AIR</span></div>
+        </header>
+        <div class="show-body">
+          <p class="show-desc">
+            ▶ 输入出生年份，用历届世预赛表现折算“入围希望指数”，推演你几岁时会遇到更现实的冲击窗口。
+            （纯属玩梗，请勿作为人生决策参考。）
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" id="birthInput" class="input-box"
+                   placeholder="出生年份（如 1995）" min="1900" max="2026"
+                   style="max-width:200px;">
+            <button id="guozuBtn" class="btn-primary">计算指数</button>
+          </div>
+          <div id="guozuOutput"></div>
+        </div>
+      </section>
+
+      <!-- ========== CH 03 · 关键战 ========== -->
+      <section class="show" data-show="keymatch">
+        <header class="show-header">
+          <span class="ch-badge">CH 03</span>
+          <h2 class="show-title">本届关键战 · KEY MATCHES</h2>
+          <div class="show-meta"><span class="live-tag">● ON AIR</span></div>
+        </header>
+        <div class="show-body">
+          <p class="show-desc">▶ 按你的口味挑出必看比赛。</p>
+          <div class="row" id="matchTabs">
+            <span class="pill active" data-tab="老炮">🔥 老炮必看</span>
+            <span class="pill" data-tab="吃瓜">🍉 吃瓜首选</span>
+            <span class="pill" data-tab="性价比">💰 熬夜友好</span>
+          </div>
+          <div id="matchList"></div>
+        </div>
+      </section>
+
+      <!-- ========== CH 04 · 出线计算器 ========== -->
+      <section class="show" data-show="qualify">
+        <header class="show-header">
+          <span class="ch-badge">CH 04</span>
+          <h2 class="show-title">出线形势计算器 · QUALIFY CALCULATOR</h2>
+          <div class="show-meta"><span class="live-tag">● ON AIR</span></div>
+        </header>
+        <div class="show-body">
+          <p class="show-desc">▶ 点球队看积分 / 净胜球 / 出线剧本。</p>
+          <div class="row" id="qualifyTeams"></div>
+          <div id="qualifyOutput"></div>
+        </div>
+      </section>
+
+      <!-- ========== CH 05 · 伪球迷速成卡 ========== -->
+      <section class="show" data-show="rookie">
+        <header class="show-header">
+          <span class="ch-badge">CH 05</span>
+          <h2 class="show-title">伪球迷速成手册 · ROOKIE GUIDE</h2>
+          <div class="show-meta"><span class="live-tag">● ON AIR</span></div>
+        </header>
+        <div class="show-body">
+          <p class="show-desc">▶ 给不懂球的家人朋友快速科普：队史 / 球星 / 风格 / 必看点 / 梗。</p>
+          <div class="row" id="rookieTeams"></div>
+          <div id="rookieOutput"></div>
+        </div>
+      </section>
+
+      <!-- ========== CH 06 · 看球夜宵 ========== -->
+      <section class="show" data-show="food">
+        <header class="show-header">
+          <span class="ch-badge">CH 06</span>
+          <h2 class="show-title">看球夜宵指南 · MATCH NIGHT FOOD</h2>
+          <div class="show-meta"><span class="live-tag">● ON AIR</span></div>
+        </header>
+        <div class="show-body">
+          <p class="show-desc">▶ 不同国家队的看球夜宵传统。</p>
+          <div class="row" id="foodTeams"></div>
+          <div id="foodOutput"></div>
+        </div>
+      </section>
+
+      <!-- ========== CH 07 · 实时信号台 ========== -->
+      <section class="show" data-show="live">
+        <header class="show-header">
+          <span class="ch-badge">CH 07</span>
+          <h2 class="show-title">实时信号台 · LIVE SIGNAL</h2>
+          <div class="show-meta"><span class="live-tag">● ON AIR</span></div>
+        </header>
+        <div class="show-body">
+
+          <!-- 倒计时 -->
+          <div class="countdown">
+            <div class="cd-meta">▶ NEXT KICKOFF · <span id="cdMatch">--</span></div>
+            <div class="cd-meta" id="cdMeta" style="font-size:11px;opacity:0.7;"></div>
+            <div class="cd-grid">
+              <div class="cd-cell"><div class="cd-num" id="cdD">00</div><div class="cd-lab">DAYS</div></div>
+              <div class="cd-cell"><div class="cd-num" id="cdH">00</div><div class="cd-lab">HRS</div></div>
+              <div class="cd-cell"><div class="cd-num" id="cdM">00</div><div class="cd-lab">MIN</div></div>
+              <div class="cd-cell"><div class="cd-num" id="cdS">00</div><div class="cd-lab">SEC</div></div>
+            </div>
+          </div>
+
+          <!-- 实时比分 -->
+          <div id="liveCardWrap"></div>
+
+          <!-- 今日赛程 -->
+          <div style="margin-top:20px;">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:2px;margin-bottom:8px;">
+              ▶ TODAY · 今日赛程
+            </div>
+            <div id="todayList"></div>
+          </div>
+
+          <!-- 完整赛程 -->
+          <div style="margin-top:20px;">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:2px;margin-bottom:8px;">
+              ▶ FULL SCHEDULE · 完整赛程
+            </div>
+            <div class="row" id="scTabs"></div>
+            <div id="scList"></div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ========== 跑马灯 ========== -->
+  <div class="ticker">
+    <span class="ticker-label">⚽ BREAKING</span>
+    <div class="ticker-content" id="tickerContent">
+      🇦🇷 阿根廷 3-0 🇫🇷 法国 · 梅西双响提前出线 · 🇯🇵 日本 2-1 🇩🇪 德国 上届剧本重演 ·
+      🇧🇷 巴西 vs 🇦🇷 阿根廷 明日 03:00 南美德比 · 🇵🇹 葡萄牙 C 罗确认本届最后一届 ·
+      国足窗口 2030 年预计 22% · 看球夜宵冠军：德国猪肘 · 世界杯每 4 年一次，所以看完这届记得等 4 年 ·
+    </div>
+  </div>
+
+  <!-- Toast 容器 -->
+  <div id="toast" class="toast"></div>
+
+  <script>/* ============================================================
+ * WCTV · 世界杯电视台 · Iframe 业务逻辑
+ * ============================================================
+ * - 频道切换（点击 + 键盘 ↑↓）
+ * - 顶部时钟、ON AIR 闪烁
+ * - AI 翻译器：预设库 + 自定义领域（调 /api/translate）
+ * - 国足预测、关键战、出线计算、伪球迷、夜宵、实时信号台
+ * - 视频背景（hana.assets.url）
+ * ============================================================ */
+
+
+
+// ============================================================
+// 本地 pluginFetch helper
+// ------------------------------------------------------------
+// 独立 HTML 版本：pluginFetch 直接走普通 fetch，无需插件凭证。
+// ============================================================
+
+function readPluginSurfaceSession() {
+  try {
+    return new URLSearchParams(window.location.search).get('pluginSurfaceSession') || null;
+  } catch { return null; }
+}
+
+function buildPluginApiUrl(path) {
+  if (typeof path !== 'string' || !path) {
+    throw new Error('pluginFetch: path is required');
+  }
+  // 拒绝任何含协议、绝对 URL、.. 穿越、跨插件 id 的路径
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path)) {
+    throw new Error('pluginFetch: absolute or external URLs are not allowed: ' + path);
+  }
+  if (path.includes('\\') || path.includes('\0')) {
+    throw new Error('pluginFetch: invalid characters in path: ' + path);
+  }
+  if (path.startsWith('//')) {
+    throw new Error('pluginFetch: protocol-relative URLs are not allowed: ' + path);
+  }
+  const segments = path.split('/').filter(Boolean);
+  if (segments.some(seg => !seg || seg === '.' || seg === '..' || seg.startsWith('.'))) {
+    throw new Error('pluginFetch: invalid path segment: ' + path);
+  }
+  // 拒绝直接写 /api/plugins/other-id/...：跨插件调用必须走 hana.host.request()
+  const otherPluginMatch = /^\/api\/plugins\/([^/]+)\//.exec(path);
+  if (otherPluginMatch) {
+    const otherId = decodeURIComponent(otherPluginMatch[1]);
+    const ownId = ownPluginId();
+    if (ownId && otherId !== ownId) {
+      throw new Error(`pluginFetch: cross-plugin call forbidden (${otherId}); use hana.host.request()`);
+    }
+  }
+  // 自动补前缀：'api/translate' → '/api/plugins/wctv-toolkit/api/translate'
+  const normalized = path.startsWith('/') ? path : '/' + path;
+  if (normalized.startsWith('/api/plugins/')) return normalized;
+  return `/api/plugins/${ownPluginId()}${normalized}`;
+}
+
+function ownPluginId() {
+  // 从 iframe 当前 URL 路径取 pluginId（不依赖 hana.assets.url() 以免空路径 throw）
+  try {
+    const m = /^\/api\/plugins\/([^/]+)\//.exec(window.location.pathname);
+    return m ? decodeURIComponent(m[1]) : '';
+  } catch { return ''; }
+}
+
+
+async function pluginFetch(path, init = {}) {
+  const url = path.startsWith('/') ? path : '/' + path;
+  return fetch(url, init);
+}
+function readPluginSurfaceSession() { return null; }
+function ownPluginId() { return 'wctv-standalone'; }
+function buildPluginApiUrl(p) { return p.startsWith('/') ? p : '/' + p; }
+
+
+// ============================================================
+// 数据
+// ============================================================
+
+const teamDB = {
+  '阿根廷': { color: '#75aadb', emoji: '🇦🇷' },
+  '巴西':   { color: '#009739', emoji: '🇧🇷' },
+  '法国':   { color: '#002395', emoji: '🇫🇷' },
+  '德国':   { color: '#000000', emoji: '🇩🇪' },
+  '西班牙': { color: '#c60b1e', emoji: '🇪🇸' },
+  '日本':   { color: '#bc002d', emoji: '🇯🇵' },
+  '韩国':   { color: '#003478', emoji: '🇰🇷' },
+  '中国':   { color: '#de2910', emoji: '🇨🇳' },
+  '美国':   { color: '#b22234', emoji: '🇺🇸' },
+  '葡萄牙': { color: '#006600', emoji: '🇵🇹' },
+  '墨西哥': { color: '#006847', emoji: '🇲🇽' },
+  '荷兰':   { color: '#ae1c28', emoji: '🇳🇱' },
+  '意大利': { color: '#008c45', emoji: '🇮🇹' },
+  '英格兰': { color: '#cf142b', emoji: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+  '克罗地亚': { color: '#ff0000', emoji: '🇭🇷' },
+  '沙特':   { color: '#006c35', emoji: '🇸🇦' },
+};
+
+const translationDB = {
+  '王者':       { icon: '⚔️' },
+  '甄嬛传':     { icon: '💮' },
+  'JOJO':       { icon: '⭐' },
+  '动物世界':   { icon: '🐾' },
+  '三国':       { icon: '🚪' },
+  '职场':       { icon: '🏢' },
+  '打工人':     { icon: '💼' },
+  '学生':       { icon: '📚' },
+  '黑客帝国':   { icon: '🕶️' },
+  '原神':       { icon: '🌍' },
+  '内娱':       { icon: '🌟' },
+  'B 站':       { icon: '📺' },
+  '金庸武侠':   { icon: '⚔️' },
+  'KFC':        { icon: '🍗' },
+};
+
+const translationCards = {
+  '王者': [
+    { title: '⚔️ 11 人制 = 三路推进', body: '不按 5v5 人数硬套。足球更像三路推进：后场守家，中场带节奏，前场收割。' },
+    { title: '🧭 中场 = 打野 + 中路', body: '中场负责把防守转成进攻，像打野带节奏、中路接线权，队伍顺不顺先看这里。' },
+    { title: '🛡️ 门将 = 水晶最后防线', body: '前面全漏了，最后只能靠门将救。像水晶前最后一波，守住就还有下一条命。' },
+    { title: '🎯 前锋 = 射手/刺客', body: '全队给你创造输出环境，最后一下必须你来点掉。进了是英雄，没进就背锅。' },
+    { title: '🎲 阵型 = BP 后打法', body: '阵型不是摆着好看，是决定谁控节奏、谁吃资源、谁负责反打的整套方案。' },
+    { title: '💥 任意球 = 关键团开大', body: '平时拉扯半天，定位球一脚就能改命。像团战前攒好的关键大招。' },
+  ],
+  '甄嬛传': [
+    { title: '💮 48 队 = 新一届选秀', body: '预选赛像层层选秀，进正赛才算被叫到殿前。扩军后，入宫名额更多，戏也更乱。' },
+    { title: '🏯 小组赛 = 初封位份', body: '先看谁能站稳脚跟。三场打完，宠妃留下，边缘人直接领盒饭。' },
+    { title: '👑 淘汰赛 = 争后位', body: '到这一步没有慢慢宫斗，输一场就出局。每个决定都像大封六宫前的最后一刀。' },
+    { title: '🔍 VAR = 滴血验亲', body: '所有人吵翻天，最后调证据回看。判完之后，有人翻案，有人彻底凉了。' },
+    { title: '🧠 主教练 = 皇后/太后', body: '不亲自下场，但谁上、谁退、谁背锅，都在她的布局里。' },
+    { title: '💔 爆冷 = 华妃失宠', body: '前一秒还气势很足，后一秒剧情急转直下。强队翻车就是宫斗名场面。' },
+  ],
+  'JOJO': [
+    { title: '⭐ 48 队 = 替身使者大混战', body: '每队都有自己的能力说明书：有人打速度，有人打防守，有人专门靠奇招阴人。' },
+    { title: '⚡ 替身能力 = 战术风格', body: '控球、反击、高位逼抢都像不同替身。强不强不只看面板，还看克制关系。' },
+    { title: '🧠 教练 = 替身使者本体', body: '真正决定能力怎么用的人在场边。本体判断错，替身再强也会被反制。' },
+    { title: '⏱️ 补时绝杀 = 时停', body: '所有人以为结束了，时间突然多出来几分钟，然后命运被一脚改写。' },
+    { title: '🔍 VAR = 回放判定', body: '像把战斗拆成逐帧分析：有没有越位、有没有犯规，证据比嘴硬。' },
+    { title: '💥 爆冷 = 能力克制', body: '纸面强队不一定赢。替身战的真理是：能力被克制，再强也会翻车。' },
+  ],
+  '动物世界': [
+    { title: '🦁 48 队 = 48 个生态位', body: '每队都有自己的生存方式：有的靠速度，有的靠围猎，有的靠防守伪装。' },
+    { title: '🌍 大洲名额 = 栖息地', body: '亚洲区、欧洲区、非洲区像不同生态带。能出线，先说明你适应了本地竞争。' },
+    { title: '🐺 高位逼抢 = 狼群围猎', body: '不是一个人猛冲，而是整队一起压缩空间，让猎物没有转身余地。' },
+    { title: '🐢 低位防守 = 龟壳', body: '弱队守强队时先缩起来，等对方露破绽再反击。难看，但能活。' },
+    { title: '⚡ 边锋 = 猎豹', body: '边路一启动就是速度差。防守球员追不上，只能祈祷他最后一脚传歪。' },
+    { title: '🦉 门将 = 夜间守望者', body: '大部分时间安静站着，真正来球时必须瞬间反应。扑点球就像夜猎。' },
+  ],
+  '三国': [
+    { title: '🏯 48 队 = 诸侯会盟', body: '预选赛像割据混战，杀进正赛才算有资格到盟会上亮旗。' },
+    { title: '👨‍🏫 主教练 = 军师', body: '排兵布阵、临场换人、什么时候守什么时候攻，都是军师活。' },
+    { title: '🛡️ 后防线 = 城池', body: '城门一破，前面打得再热闹也没用。守住底线才有反攻机会。' },
+    { title: '🌾 中场 = 粮道', body: '中场断了，前锋拿不到球，后卫也出不去。粮道一断，大军就散。' },
+    { title: '⚔️ 前锋 = 先锋官', body: '冲在最前，功劳最大，风险也最大。破门就是斩将。' },
+    { title: '🔥 淘汰赛 = 赤壁/官渡', body: '小组赛还能周旋，淘汰赛就是一役定天下，输完没有第二封战报。' },
+  ],
+  '职场': [
+    { title: '🏢 世界杯 = 全球项目大会', body: '平时各队在不同联赛打工，世界杯像所有分公司拉到一个会场交付终极项目。' },
+    { title: '👔 主教练 = 项目负责人', body: '定目标、排资源、临场救火。项目成了是战略好，崩了第一个被复盘。' },
+    { title: '📊 前锋 = 销售', body: '进球就是成交。机会都喂到脚下了，最后签不签单全看你。' },
+    { title: '🔄 中场 = 产品/运营中台', body: '连接前后场，负责把混乱需求变成可执行路径。看着不显眼，断了全队卡死。' },
+    { title: '💰 门将 = 风控/财务', body: '平时没人夸，出一次事故全公司记住。守住底线就是最大贡献。' },
+    { title: '📅 淘汰赛 = 大客户终审', body: '小组赛像阶段汇报，淘汰赛是甲方终审。一次没过，项目直接结束。' },
+  ],
+  '打工人': [
+    { title: '😴 世界杯 = 全员摸鱼月', body: '夜里看球，白天装正常。真正的对手不是强队，是第二天早会。' },
+    { title: '💼 主教练 = 老板', body: '赛前画蓝图，赛后开复盘。赢了叫战略正确，输了叫执行不到位。' },
+    { title: '📈 前锋 = 销冠', body: '全队铺垫半天，最后必须你拿结果。进球像开单，没进像客户飞了。' },
+    { title: '🔧 中场 = 工具人', body: '别人只看最后谁进球，但活是谁串起来的，懂的人都懂。' },
+    { title: '🧯 后卫 = 救火同事', body: '前面需求乱飞，最后靠后卫补洞。补上没人夸，漏了全组沉默。' },
+    { title: '⏰ 补时 = 下班前需求', body: '以为快结束了，突然多出几分钟。最危险的永远是临下班那一下。' },
+  ],
+  '学生': [
+    { title: '📚 世界杯 = 期末月', body: '预选赛像平时成绩，正赛像期末。平时欠的账，最后都会在积分榜上出现。' },
+    { title: '📝 小组赛 = 三门连考', body: '三场球像三门考试。不是一题定生死，但每一题都会影响排名。' },
+    { title: '🎯 前锋 = 拿分大题', body: '前面推导再漂亮，最后答案没写出来也没分。射门就是最后一问。' },
+    { title: '🧠 中场 = 解题思路', body: '思路通了，全卷都顺。中场乱了，前锋只能在前面干等。' },
+    { title: '🔍 VAR = 老师复核卷面', body: '当场吵没用，回放像调监控。越位一毫米也能扣分。' },
+    { title: '🏆 决赛 = 年级第一争夺战', body: '能走到最后的都不是偏科选手，拼的是稳定、心态和最后一题。' },
+  ],
+  '黑客帝国': [
+    { title: '🕶️ 48 队 = 48 个觉醒者', body: '能进正赛，说明已经从预选赛母体里醒过来。接下来才是真实战场。' },
+    { title: '💊 红色药丸 = 淘汰赛', body: '小组赛还能算分，淘汰赛吃下红药丸：真实世界只有赢和回家。' },
+    { title: '🤖 史密斯 = 高压逼抢', body: '你刚拿球，周围立刻复制出三个人围上来。压迫感就是这么来的。' },
+    { title: '🧩 阵型 = 母体代码', body: '表面看是球员站位，底层其实是空间规则。谁看懂代码，谁先破局。' },
+    { title: '🕰️ 慢镜回放 = 子弹时间', body: '高速冲突被拆成一帧一帧，最后看清到底是谁碰到了球。' },
+    { title: '👁️ 核心球星 = 尼奥', body: '体系很重要，但关键时刻总要有人看见别人看不见的通道。' },
+  ],
+  '原神': [
+    { title: '🌍 七国 = 大洲赛区', body: '提瓦特主框架是七国，不是 48 国。更适合映射成赛区：各有风格，各自产生代表队。' },
+    { title: '🎪 48 队 = 限时活动参赛队', body: '世界杯像四年一次大型版本活动，48 支队伍更像活动参赛队，国家设定仍按七国框架理解。' },
+    { title: '⚡ 元素 = 战术风格', body: '控球、反击、高压、防守，就像元素属性。单看属性没用，关键看怎么配队。' },
+    { title: '🧪 元素反应 = 战术联动', body: '边路突破接中路包抄，像先挂元素再触发反应。配合对了，伤害才会跳大数字。' },
+    { title: '⭐ 核心球星 = 五星主C', body: '全队资源围着他转，但主C也要辅助、充能和生存位，不然再强也打不满循环。' },
+    { title: '🌀 深渊 = 淘汰赛', body: '小组赛还能算容错，淘汰赛像深渊高层：一层没过，后面奖励全没了。' },
+  ],
+  '内娱': [
+    { title: '🌟 48 队 = 48 个舞台席位', body: '预选赛像层层选拔，进正赛才算拿到全球舞台。扩军后，更多小国有出圈机会。' },
+    { title: '🔥 进球 = 爆上热搜', body: '一脚进去，全网转发。精彩进球就是天然热搜，不用买。' },
+    { title: '🎤 预选赛 = 选秀海选', body: '先在本赛区杀出来，才有资格进总决赛。海选没过，正片都没有镜头。' },
+    { title: '💫 爆冷 = 素人逆袭', body: '名气小不等于没实力。小队赢强队，就是选秀里突然杀出的黑马。' },
+    { title: '📉 红牌 = 舞台事故', body: '一个动作毁掉全场节奏，镜头马上给特写，评论区开始审判。' },
+    { title: '🎬 决赛 = 年度大赏', body: '所有铺垫最后都汇到一个舞台。能站到最后，才是真正年度主角。' },
+  ],
+  'B 站': [
+    { title: '📺 48 队 = 48 个投稿进首页', body: '预选赛像冷启动筛选，进世界杯才算被推到首页大舞台。' },
+    { title: '🔥 进球 = 爆款片段', body: '一个球就能剪成无数二创，像突然破圈的视频，被全站反复引用。' },
+    { title: '📊 控球率 = 播放占比', body: '控球率高说明你掌控画面，但不代表一定赢。像播放高，不一定转化好。' },
+    { title: '💬 VAR = 逐帧考据弹幕', body: '越位、手球、犯规，都被拆成逐帧证据。弹幕区开始技术鉴定。' },
+    { title: '🧩 战术板 = 视频脚本', body: '球员跑位像分镜。脚本写得好，镜头自然顺；脚本乱，观众看不懂。' },
+    { title: '🎰 点球大战 = 一键三连抽签', body: '紧张、公开、谁都盯着。实力铺垫到最后，还是要面对命运按钮。' },
+  ],
+  '金庸武侠': [
+    { title: '🏔️ 48 队 = 武林大会门派', body: '预选赛像各地门派内斗，正赛才是天下英雄同台。扩军后，小门派也能亮相。' },
+    { title: '👑 决赛 = 华山论剑', body: '不是赢一场小架，是争天下第一。名号会被江湖记很多年。' },
+    { title: '⚔️ 进球 = 破招', body: '盘带过人像独孤九剑，远射像六脉神剑，任意球像蓄力一掌。关键是破防。' },
+    { title: '👨‍🏫 主教练 = 掌门/军师', body: '平时练阵，临场调招。弟子赢了是门派荣耀，输了掌门也要背锅。' },
+    { title: '🧘 VAR = 辨招裁断', body: '这一掌到底有没有出界，这一步算不算越位，最后都得慢镜头验招。' },
+    { title: '🗡️ 0-0 = 点到为止', body: '双方都没破防，但也没露破绽。看着平淡，其实是高手互相试探。' },
+  ],
+  'KFC': [
+    { title: '🍗 48 队 = 48 款限定套餐', body: '世界杯扩军像菜单扩容，热门套餐还在，小众口味也终于摆上柜台。' },
+    { title: '👨‍🍳 主教练 = 后厨排班长', body: '谁负责炸鸡、谁负责汉堡、什么时候出餐，都靠他调度。乱了就全店卡单。' },
+    { title: '🛒 首发 11 人 = 当日出餐线', body: '不是 11 块炸鸡，是 11 个岗位同时运转。少一个环节，整套套餐都慢。' },
+    { title: '🍔 进球 = 叫号取餐', body: '前面准备半天，听到叫号那一刻才算交付成功。球迷等的就是这一声。' },
+    { title: '🌶️ 红牌 = 后厨事故', body: '一个人被罚下，像关键岗位突然离线。后面所有人都得加班补位。' },
+    { title: '🎟️ 0-0 = 排队没出餐', body: '等了九十分钟，双方都没叫到号。不是没努力，是谁都没把单做出来。' },
+  ],
+};
+
+// ============================================================
+// 国际化 (i18n)：英文 → 中文映射
+// ESPN 返回的所有英文字段（队名 / 状态 / 阶段）都查这个表。
+// ============================================================
+
+const TEAM_ZH = {
+  // 2026 世界杯 12 组 × 4 队 = 48 队完整中文名 + 国旗
+  'ARG': { zh: '阿根廷', flag: '🇦🇷' },
+  'BRA': { zh: '巴西',   flag: '🇧🇷' },
+  'FRA': { zh: '法国',   flag: '🇫🇷' },
+  'GER': { zh: '德国',   flag: '🇩🇪' },
+  'ESP': { zh: '西班牙', flag: '🇪🇸' },
+  'JPN': { zh: '日本',   flag: '🇯🇵' },
+  'KOR': { zh: '韩国',   flag: '🇰🇷' },
+  'USA': { zh: '美国',   flag: '🇺🇸' },
+  'POR': { zh: '葡萄牙', flag: '🇵🇹' },
+  'MEX': { zh: '墨西哥', flag: '🇲🇽' },
+  'NED': { zh: '荷兰',   flag: '🇳🇱' },
+  'ENG': { zh: '英格兰', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+  'URU': { zh: '乌拉圭', flag: '🇺🇾' },
+  'BEL': { zh: '比利时', flag: '🇧🇪' },
+  'CRO': { zh: '克罗地亚', flag: '🇭🇷' },
+  'COL': { zh: '哥伦比亚', flag: '🇨🇴' },
+  'SUI': { zh: '瑞士',   flag: '🇨🇭' },
+  'MAR': { zh: '摩洛哥', flag: '🇲🇦' },
+  'AUS': { zh: '澳大利亚', flag: '🇦🇺' },
+  'CAN': { zh: '加拿大', flag: '🇨🇦' },
+  'QAT': { zh: '卡塔尔', flag: '🇶🇦' },
+  'KSA': { zh: '沙特',   flag: '🇸🇦' },
+  'IRN': { zh: '伊朗',   flag: '🇮🇷' },
+  'ECU': { zh: '厄瓜多尔', flag: '🇪🇨' },
+  'NOR': { zh: '挪威',   flag: '🇳🇴' },
+  'BIH': { zh: '波黑',   flag: '🇧🇦' },
+  'PAR': { zh: '巴拉圭', flag: '🇵🇾' },
+  'TUN': { zh: '突尼斯', flag: '🇹🇳' },
+  'SEN': { zh: '塞内加尔', flag: '🇸🇳' },
+  'CIV': { zh: '科特迪瓦', flag: '🇨🇮' },
+  'SCO': { zh: '苏格兰', flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿' },
+  'HAI': { zh: '海地',   flag: '🇭🇹' },
+  'COD': { zh: '民主刚果', flag: '🇨🇩' },
+  'CUW': { zh: '库拉索', flag: '🇨🇼' },
+  'GHA': { zh: '加纳',   flag: '🇬🇭' },
+  'EGY': { zh: '埃及',   flag: '🇪🇬' },
+  'IRQ': { zh: '伊拉克', flag: '🇮🇶' },
+  'JOR': { zh: '约旦',   flag: '🇯🇴' },
+  'UZB': { zh: '乌兹别克斯坦', flag: '🇺🇿' },
+  'ALG': { zh: '阿尔及利亚', flag: '🇩🇿' },
+  'AUT': { zh: '奥地利', flag: '🇦🇹' },
+  'CPV': { zh: '佛得角', flag: '🇨🇻' },
+  'NZL': { zh: '新西兰', flag: '🇳🇿' },
+  'PAN': { zh: '巴拿马', flag: '🇵🇦' },
+  'SWE': { zh: '瑞典',   flag: '🇸🇪' },
+  'TUR': { zh: '土耳其', flag: '🇹🇷' },
+  'CZE': { zh: '捷克',   flag: '🇨🇿' },
+  'RSA': { zh: '南非',   flag: '🇿🇦' },
+};
+
+function tTeam(abbr) {
+  return TEAM_ZH[abbr] || { zh: abbr, flag: '🏳️' };
+}
+
+function tStage(stage) {
+  if (!stage) return '';
+  if (/^Group [A-L]$/.test(stage)) return stage.replace('Group ', '') + ' 组';
+  if (stage === 'Knockout') return '淘汰赛';
+  if (/^RD16 W\d-RD16 W\d$/.test(stage)) return '1/8 决赛';
+  if (/^RD32-RD32$/.test(stage)) return '1/16 决赛';
+  return stage;
+}
+
+function tStatusText(e) {
+  if (e.state === 'in') return `● LIVE ${e.displayClock || ''}`.trim();
+  if (e.state === 'post') return `完场 ${e.home.score} - ${e.away.score}`;
+  return '未开赛';
+}
+
+function tStatusBadge(state) {
+  if (state === 'in') return ['live', '● LIVE'];
+  if (state === 'post') return ['finished', '完场'];
+  return ['upcoming', '未开'];
+}
+
+// 详情日期本地化：英文星期 → 中文
+const WEEKDAY_ZH = { Sun: '日', Mon: '一', Tue: '二', Wed: '三', Thu: '四', Fri: '五', Sat: '六' };
+function tDetail(detail) {
+  if (!detail) return '';
+  return detail
+    .replace(/Sun,?\s+/g, '周日 ')
+    .replace(/Mon,?\s+/g, '周一 ')
+    .replace(/Tue,?\s+/g, '周二 ')
+    .replace(/Wed,?\s+/g, '周三 ')
+    .replace(/Thu,?\s+/g, '周四 ')
+    .replace(/Fri,?\s+/g, '周五 ')
+    .replace(/Sat,?\s+/g, '周六 ')
+    .replace(/January/g, '1 月').replace(/February/g, '2 月').replace(/March/g, '3 月')
+    .replace(/April/g, '4 月').replace(/May/g, '5 月').replace(/June/g, '6 月')
+    .replace(/July/g, '7 月').replace(/August/g, '8 月').replace(/September/g, '9 月')
+    .replace(/October/g, '10 月').replace(/November/g, '11 月').replace(/December/g, '12 月')
+    .replace(/1st/g, '1 日').replace(/2nd/g, '2 日').replace(/3rd/g, '3 日')
+    .replace(/(\d+)th/g, '$1 日')
+    .replace(/EDT/g, '美东').replace(/EST/g, '美东');
+}
+
+// FIFA 排名种子 (Top 20, 2026 揭幕前数据从 FIFA 官方采) - 用于 CH 03 筛“强强对话”
+const FIFA_RANK_2026 = {
+  'ARG': 1,  // 阿根廷
+  'FRA': 2,  // 法国
+  'BRA': 3,  // 巴西
+  'ENG': 4,  // 英格兰
+  'BEL': 5,  // 比利时
+  'GER': 6,  // 德国
+  'ESP': 7,  // 西班牙
+  'NED': 8,  // 荷兰
+  'POR': 9,  // 葡萄牙
+  'URU': 10, // 乌拉圭
+  'MEX': 11, // 墨西哥
+  'USA': 12, // 美国
+  'SUI': 13, // 瑞士
+  'COL': 14, // 哥伦比亚
+  'CRO': 15, // 克罗地亚
+  'DEN': 16, // 丹麦
+  'JPN': 17, // 日本
+  'MAR': 18, // 摩洛哥
+  'KOR': 19, // 韩国
+  'ECU': 20, // 厄瓜多尔
+  'AUS': 22, 'CAN': 23, 'QAT': 24, 'IRN': 25, 'KSA': 28, 'NOR': 30, 'BIH': 35, 'PAR': 40, 'TUN': 45, 'SEN': 50, 'CIV': 55, 'SCO': 60, 'HAI': 65, 'COD': 70, 'CUW': 75, 'GHA': 80, 'EGY': 85, 'IRQ': 90, 'JOR': 95, 'UZB': 100, 'ALG': 105, 'AUT': 110, 'CPV': 115, 'NZL': 120, 'PAN': 125, 'SWE': 130, 'TUR': 135,
+};
+
+function rankOf(abbr) { return FIFA_RANK_2026[abbr] || 999; }
+
+// 真实 100 场赛程从 /api/schedule 拉，CH 03 不用 hardcoded matchDB
+let _scheduleEvents = [];
+
+async function loadSchedule() {
+  try {
+    const r = await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?lang=en&region=us&limit=400', { headers: { 'User-Agent': 'WCTV-Standalone/1.0' }, signal: AbortSignal.timeout(8000) });
+    const data = await r.json();
+    _scheduleEvents = data.events || [];
+    return true;
+  } catch (e) {
+    console.warn('[WCTV] schedule load failed:', e.message);
+    return false;
+  }
+}
+
+function matchReason(e) {
+  const h = e.home.abbr, a = e.away.abbr;
+  const hr = rankOf(h), ar = rankOf(a);
+  const tags = [];
+  if (hr <= 20 && ar <= 20) tags.push('强强对话');
+  if (['USA','CAN','MEX'].includes(h) || ['USA','CAN','MEX'].includes(a)) tags.push('东道主');
+  if (e.state === 'post') tags.push('已完赛');
+  if (hr <= 10 || ar <= 10) tags.push('Top 10');
+  // 经典复仇: JPN vs GER (上届日本 2-1 逆转)
+  if ((h === 'JPN' && a === 'GER') || (h === 'GER' && a === 'JPN')) tags.push('上届复仇局');
+  return tags.join(' · ');
+}
+
+function localHm(date) {
+  const d = (date instanceof Date) ? date : new Date(date);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function pickKeyMatches() {
+  // 老炮: 两队都在 Top 15 且是小组赛 / Top 20 强强对话
+  const elites = _scheduleEvents.filter(e => e.stage && e.stage.startsWith('Group')).filter(e => {
+    const hr = rankOf(e.home.abbr), ar = rankOf(e.away.abbr);
+    return Math.max(hr, ar) <= 15 && Math.min(hr, ar) <= 25;
+  }).sort((a, b) => new Date(a.date) - new Date(b.date));
+  // 吃瓜: 东道主 / 复仇局 / Top 10 包含
+  const spectacle = _scheduleEvents.filter(e => {
+    const tags = matchReason(e).split(' · ');
+    return tags.includes('东道主') || tags.includes('上届复仇局') || tags.includes('Top 10');
+  }).sort((a, b) => new Date(a.date) - new Date(b.date));
+  // 性价比: 本地 18-23 点 + 至少 Top 20
+  const friendly = _scheduleEvents.filter(e => {
+    const h = new Date(e.date).getHours();
+    return h >= 18 && h < 23 && Math.min(rankOf(e.home.abbr), rankOf(e.away.abbr)) <= 25;
+  }).sort((a, b) => new Date(a.date) - new Date(b.date));
+  return {
+    '老炮': elites.slice(0, 8),
+    '吃瓜': spectacle.slice(0, 8),
+    '性价比': friendly.slice(0, 8),
+  };
+}
+
+function renderKeyMatchCard(e) {
+  const tags = matchReason(e).split(' · ').filter(t => t !== '已完赛');
+  const score = e.state === 'pre' ? 'vs' : `${e.home.score} - ${e.away.score}`;
+  const hTeam = tTeam(e.home.abbr);
+  const aTeam = tTeam(e.away.abbr);
+  const statusBadge = e.state === 'in'
+    ? `<span class="match-tag" style="background:var(--signal);">${tStatusText(e)}</span>`
+    : e.state === 'post'
+    ? `<span class="match-tag" style="background:var(--text-dim);color:var(--bg);">${tStatusText(e)}</span>`
+    : `<span class="match-tag">${tStatusText(e)}</span>`;
+  const tagHtml = tags.length ? tags.map(t => `<span class="match-tag" style="background:rgba(0,217,255,0.15);color:var(--secondary);margin-left:4px;">${escapeHtml(t)}</span>`).join('') : '';
+  return `<div class="match-card">
+    <div class="match-teams">${hTeam.flag} ${escapeHtml(hTeam.zh)} vs ${escapeHtml(aTeam.zh)} ${aTeam.flag}</div>
+    <div class="match-reason">📅 ${e.date.slice(0,10)} ${localHm(e.date)} · ${escapeHtml(tStage(e.stage))} · ${escapeHtml(e.venue || '—')}</div>
+    <div style="margin-top:4px;">${statusBadge}${tagHtml}</div>
+  </div>`;
+}
+
+// 真实小组数据从 /api/standings 拉，ESPN 公开 API 源。
+const qualifyDB = {};   // legacy 兼容 - 实际不再使用
+let _standings = null;  // 原始 ESPN standings (开赛前初始积分，常为 0)
+
+// 从 /api/schedule 拿到的 100 场数据里自算积分。
+// 原因：ESPN /standings 端点返回开赛前种子排名，不含已踢比赛。
+// scoreboard 含 100 场完整赛程 (含已踢) → 可以从已踢比赛里自算 W/D/L/GF/GA/GD/PTS。
+function computeStandingsFromSchedule(events) {
+  const stats = {};        // abbr → { w, d, l, gf, ga, played }
+  const teamGroup = {};    // abbr → 'A'..'L'
+  for (const e of events) {
+    // 1. 只处理小组赛；淘汰赛结果不能混进小组积分。
+    const isGroupStage = e.stage && /^Group [A-L]$/.test(e.stage);
+    if (!isGroupStage) continue;
+    const g = e.stage.replace('Group ', '');
+    if (!teamGroup[e.home.abbr]) teamGroup[e.home.abbr] = g;
+    if (!teamGroup[e.away.abbr]) teamGroup[e.away.abbr] = g;
+
+    // 2. 累计已踢小组赛积分
+    if (e.state !== 'post') continue;
+    const h = e.home.abbr, a = e.away.abbr;
+    if (!stats[h]) stats[h] = { w:0, d:0, l:0, gf:0, ga:0, played:0 };
+    if (!stats[a]) stats[a] = { w:0, d:0, l:0, gf:0, ga:0, played:0 };
+    stats[h].gf += e.home.score; stats[h].ga += e.away.score; stats[h].played += 1;
+    stats[a].gf += e.away.score; stats[a].ga += e.home.score; stats[a].played += 1;
+    if (e.home.score > e.away.score) { stats[h].w++; stats[h].gdAdd = (stats[h].gdAdd||0) + (e.home.score - e.away.score); stats[a].l++; stats[a].gdAdd = (stats[a].gdAdd||0) - (e.home.score - e.away.score); }
+    else if (e.home.score < e.away.score) { stats[a].w++; stats[a].gdAdd = (stats[a].gdAdd||0) + (e.away.score - e.home.score); stats[h].l++; stats[h].gdAdd = (stats[h].gdAdd||0) - (e.away.score - e.home.score); }
+    else { stats[h].d++; stats[h].gdAdd = (stats[h].gdAdd||0); stats[a].d++; stats[a].gdAdd = (stats[a].gdAdd||0); }
+  }
+  // 3. 拼装
+  const groups = {};
+  for (const [abbr, grp] of Object.entries(teamGroup)) {
+    if (!groups[grp]) groups[grp] = [];
+    const s = stats[abbr] || { w:0, d:0, l:0, gf:0, ga:0, played:0, gdAdd:0 };
+    groups[grp].push({
+      abbr, name: abbr,
+      wins: s.w, draws: s.d, losses: s.l, gf: s.gf, ga: s.ga, gd: s.gdAdd || 0,
+      points: s.w * 3 + s.d, played: s.played,
+    });
+  }
+  // 4. 排序
+  for (const g of Object.values(groups)) g.sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
+  return groups;
+}
+
+let _computedStandings = null;  // 从 scoreboard 算的实时积分（CH 04 用）
+
+const rookieTeams = [
+  { name: '加拿大', region: '东道主 · CONCACAF', player: '阿方索·戴维斯、乔纳森·戴维', style: '速度、身体、北美冲击力', watch: '东道主buff能走多远', meme: '把冰球国家硬改成足球热土' },
+  { name: '墨西哥', region: '东道主 · CONCACAF', player: '希门尼斯、洛萨诺、路易斯·罗莫', style: '高原主场、中北美老油条、节奏快', watch: '主场能不能突破八强魔咒', meme: '世界杯常客，八强门口反复横跳' },
+  { name: '美国', region: '东道主 · CONCACAF', player: '普利西奇、麦肯尼、雷纳', style: '高压逼抢、身体好、转换快', watch: '主场青年军上限', meme: '美式体育工厂终于认真踢足球' },
+  { name: '澳大利亚', region: 'AFC', player: '杰克逊·欧文、苏塔尔、瑞恩', style: '身体对抗、低位防守、定位球', watch: '亚洲硬汉队的淘汰赛门票', meme: '大洋洲出身，亚洲区打工' },
+  { name: '伊拉克', region: 'AFC', player: '侯赛因、伊克巴尔', style: '西亚对抗、反击、情绪拉满', watch: '能不能在强组里偷分', meme: '谁小看西亚队谁倒霉' },
+  { name: '伊朗', region: 'AFC', player: '塔雷米、阿兹蒙、贾汉巴赫什', style: '硬朗防守、空中球、反击效率', watch: '亚洲传统强队能否突破小组赛', meme: '亚洲老大哥，谁碰都硌牙' },
+  { name: '日本', region: 'AFC', player: '三笘薰、久保建英、远藤航', style: '传控、跑动、整体纪律', watch: '亚洲天花板冲击更高上限', meme: '亚洲之光，专治欧洲强队不服' },
+  { name: '约旦', region: 'AFC · 首次参赛', player: '塔马里、奈马特', style: '防守反击、边路爆点、定位球', watch: '第一次世界杯会不会继续黑马剧本', meme: '阿拉伯的希腊' },
+  { name: '韩国', region: 'AFC', player: '孙兴慜、李刚仁、金玟哉', style: '高速冲刺、压迫、精神属性', watch: '孙兴慜最后窗口还能冲多远', meme: '跑到终场哨响才算下班' },
+  { name: '卡塔尔', region: 'AFC', player: '阿菲夫、阿里', style: '短传配合、亚洲杯冠军底子', watch: '从东道主到真正竞争者', meme: '亚洲杯学霸来世界杯补考' },
+  { name: '沙特', region: 'AFC', player: '多萨里、卡诺、布赖坎', style: '铁桶阵、反击、主场式情绪', watch: '能不能复刻掀翻阿根廷的剧本', meme: '强队 PTSD 制造机' },
+  { name: '乌兹别克斯坦', region: 'AFC · 首次参赛', player: '绍穆罗多夫、法伊祖拉耶夫', style: '中亚硬度、整体防守、身体对抗', watch: '多年世预赛苦主终于圆梦', meme: '前苏联足球遗产开盲盒' },
+  { name: '阿尔及利亚', region: 'CAF', player: '马赫雷斯、本纳塞尔', style: '北非技术、边路突破、反击', watch: '非洲冠军气质能否兑现', meme: '沙漠刀锋，踢顺了很吓人' },
+  { name: '佛得角', region: 'CAF · 首次参赛', player: 'Vozinha、若瓦内·卡布拉尔', style: '门将神扑、团队防守、摆大巴', watch: '50万人岛国的童话能写几章', meme: '地图上很小，扑救声很大' },
+  { name: '刚果（金）', region: 'CAF', player: '维萨、巴坎布、姆本巴', style: '身体天赋、边路冲击、乱战能力', watch: '能否继续制造豪门尴尬', meme: '把比赛踢成丛林冒险' },
+  { name: '科特迪瓦', region: 'CAF', player: '凯西、阿丁格拉、哈勒', style: '力量、边路爆破、中场硬度', watch: '非洲杯冠军班底能否延续', meme: '大象军团，撞一下很疼' },
+  { name: '埃及', region: 'CAF', player: '萨拉赫、特雷泽盖', style: '边路速度、反击、明星战术', watch: '萨拉赫世界杯证明题', meme: '法老王最后还想写一章' },
+  { name: '加纳', region: 'CAF', player: '库杜斯、托马斯、阿尤兄弟', style: '黑星速度、身体、反击', watch: '青春风暴能不能稳定下来', meme: '黑星一亮，谁都别太放松' },
+  { name: '摩洛哥', region: 'CAF', player: '阿什拉夫、齐耶赫、阿姆拉巴特', style: '防守纪律、快速反击、边路推进', watch: '上届四强神话能否续命', meme: '非洲之光，欧洲队老熟人' },
+  { name: '塞内加尔', region: 'CAF', player: '马内、库利巴利、雅克松', style: '身体、速度、攻防均衡', watch: '非洲豪强的稳定性', meme: '特兰加雄狮，咬住就不松口' },
+  { name: '南非', region: 'CAF', player: '陶、莫科纳', style: '团队防守、主打整体、韧性', watch: '能不能重现2010记忆', meme: '呜呜祖拉的精神后继者' },
+  { name: '突尼斯', region: 'CAF', player: '斯希里、哈兹里', style: '北非防守、缠斗、节奏破坏', watch: '小组赛搅局能力', meme: '比赛可以不赢，但一定难踢' },
+  { name: '库拉索', region: 'CONCACAF · 首次参赛', player: '荷兰青训归化班底', style: '荷式传控、加勒比速度、4-3-3', watch: '15万人小岛的世界杯奇迹', meme: '地图很难找，故事很好讲' },
+  { name: '海地', region: 'CONCACAF', player: '纳松、皮埃罗', style: '身体、反击、情绪足球', watch: '加勒比黑马能否偷到分', meme: '踢球像飓风，来得很突然' },
+  { name: '巴拿马', region: 'CONCACAF', player: '卡拉斯基利亚、法哈多', style: '硬度、长传、定位球', watch: '中北美搅局者成色', meme: '运河之子，专门卡你节奏' },
+  { name: '阿根廷', region: 'CONMEBOL', player: '梅西、劳塔罗、阿尔瓦雷斯', style: '南美技术、控节奏、明星终结', watch: '卫冕冠军和梅西故事线', meme: '主角光环还剩多少电' },
+  { name: '巴西', region: 'CONMEBOL', player: '维尼修斯、罗德里戈、恩德里克', style: '桑巴、边路爆破、个人能力', watch: '足球王国能否归来', meme: '每届都像大结局预告片' },
+  { name: '哥伦比亚', region: 'CONMEBOL', player: '迪亚斯、哈梅斯、莱尔马', style: '边路突破、南美节奏、反击', watch: '黄金一代之后的新答案', meme: '咖啡一上头，谁都敢冲' },
+  { name: '厄瓜多尔', region: 'CONMEBOL', player: '凯塞多、埃斯图皮尼安、派斯', style: '年轻、身体、冲击力', watch: '南美新贵的上限', meme: '海拔 Buff 不在也能跑' },
+  { name: '巴拉圭', region: 'CONMEBOL', player: '阿尔米隆、巴尔武埃纳', style: '防守、反击、对抗', watch: '老派南美硬骨头回归', meme: '想赢可以，先撞墙' },
+  { name: '乌拉圭', region: 'CONMEBOL', player: '努涅斯、巴尔韦德、阿劳霍', style: '疯狗压迫、硬度、快速纵深', watch: '贝尔萨足球在世界杯能烧多久', meme: '人少，狠人多' },
+  { name: '新西兰', region: 'OFC', player: '克里斯·伍德、辛格', style: '身体、长传、定位球', watch: '大洋洲代表能否抢分', meme: '全白军团，简单直接' },
+  { name: '奥地利', region: 'UEFA', player: '阿拉巴、萨比策、莱默尔', style: '高压逼抢、德系节奏、团队纪律', watch: '朗尼克足球的世界杯版本', meme: '德语区高压实验班' },
+  { name: '比利时', region: 'UEFA', player: '德布劳内、多库、卢卡库', style: '球星个人能力、边路突击', watch: '黄金一代余晖后的重建', meme: '纸面强队的期末补考' },
+  { name: '波黑', region: 'UEFA', player: '哲科、皮亚尼奇', style: '中路组织、经验、定位球', watch: '老将最后窗口', meme: '一代人的青春尾声' },
+  { name: '克罗地亚', region: 'UEFA', player: '莫德里奇、格瓦迪奥尔、科瓦契奇', style: '中场控制、韧性、淘汰赛经验', watch: '格子军团还能不能加时续命', meme: '不到点球大战不算上班' },
+  { name: '捷克', region: 'UEFA', player: '希克、绍切克', style: '高点、身体、直接打法', watch: '高空轰炸和定位球', meme: '欧洲老派大个子队' },
+  { name: '英格兰', region: 'UEFA', player: '贝林厄姆、凯恩、萨卡', style: '英超节奏、阵容厚度、定位球', watch: '每届都被看好的压力测试', meme: '足球回家，导航总失灵' },
+  { name: '法国', region: 'UEFA', player: '姆巴佩、楚阿梅尼、格列兹曼', style: '速度、反击、阵容深度', watch: '姆巴佩时代的统治力', meme: '板凳席也能组强队' },
+  { name: '德国', region: 'UEFA', player: '穆西亚拉、维尔茨、哈弗茨', style: '纪律、压迫、组织', watch: '战车修好没有', meme: '日耳曼战车，最近常进厂检修' },
+  { name: '荷兰', region: 'UEFA', player: '范戴克、德容、加克波', style: '全攻全守遗产、边路推进', watch: '无冕之王能否破咒', meme: '每次都很强，每次都差一点' },
+  { name: '挪威', region: 'UEFA', player: '哈兰德、厄德高', style: '终结能力、直塞、身体冲击', watch: '哈兰德第一次世界杯大考', meme: '高中锋开了怪兽模式' },
+  { name: '葡萄牙', region: 'UEFA', player: 'C 罗、B费、B席、莱奥', style: '球星密度、边路突击、定位球', watch: 'C罗谢幕和豪华阵容磨合', meme: '最后一舞跳了好多年' },
+  { name: '苏格兰', region: 'UEFA', player: '罗伯逊、麦克托米奈', style: '硬朗、长传、身体对抗', watch: '36年后的世界杯存在感', meme: '格子裙精神，不服就拼' },
+  { name: '西班牙', region: 'UEFA', player: '亚马尔、佩德里、罗德里', style: '传控、压迫、年轻边锋', watch: '欧洲冠军能否稳住热门身份', meme: '把球传到你怀疑人生' },
+  { name: '瑞典', region: 'UEFA', player: '伊萨克、库卢塞夫斯基', style: '北欧身体、反击、锋线冲击', watch: '双前锋火力能否兑现', meme: '北欧冷空气，前场很热' },
+  { name: '瑞士', region: 'UEFA', player: '扎卡、阿坎吉、索默', style: '稳定、防守纪律、团队执行', watch: '欧洲杯老熟人的下限', meme: '瑞士表一样准，也一样难坏' },
+  { name: '土耳其', region: 'UEFA', player: '恰尔汗奥卢、居莱尔、伊尔迪兹', style: '激情、远射、年轻天才', watch: '新黄金一代能否爆发', meme: '情绪值拉满，红温也拉满' },
+];
+
+const rookieDB = Object.fromEntries(rookieTeams.map(team => [team.name, [
+  `参赛身份：${team.region}`,
+  `核心人物：${team.player}`,
+  `风格标签：${team.style}`,
+  `必看的点：${team.watch}`,
+  `经典梗：${team.meme}`,
+]]));
+
+const foodDB = {
+  '阿根廷': [
+    { emoji: '🥩', name: '阿萨多（Asado）烤肉', desc: '阿根廷国民烤肉，看球必备' },
+    { emoji: '🧉', name: '马黛茶', desc: '南美传统饮料，提神神器' },
+    { emoji: '🍷', name: '马尔贝克红酒', desc: '阿根廷国酒，输了也得喝' },
+  ],
+  '巴西': [
+    { emoji: '🍖', name: '巴西烤肉（Churrasco）', desc: '桑巴足球配巴西烤肉，绝了' },
+    { emoji: '🍺', name: 'Brahma 啤酒', desc: '巴西国民啤酒' },
+    { emoji: '🍲', name: '黑豆饭（Feijoada）', desc: '巴西国民菜' },
+  ],
+  '德国': [
+    { emoji: '🍖', name: '德国猪肘', desc: '德国战车的能量来源' },
+    { emoji: '🍺', name: '德国啤酒', desc: '慕尼黑啤酒节同款' },
+    { emoji: '🥨', name: '碱水面包', desc: '德国传统主食' },
+  ],
+  '法国': [
+    { emoji: '🥖', name: '法棍 + 奶酪', desc: '法式优雅' },
+    { emoji: '🍷', name: '法国红酒', desc: '输赢都喝' },
+    { emoji: '🧀', name: '奶酪拼盘', desc: '高级感拉满' },
+  ],
+  '西班牙': [
+    { emoji: '🥘', name: '海鲜饭（Paella）', desc: '西班牙国民菜' },
+    { emoji: '🥓', name: '伊比利亚火腿', desc: '高级食材' },
+    { emoji: '🍷', name: '桑格利亚汽酒', desc: '西班牙国民酒' },
+  ],
+  '日本': [
+    { emoji: '🍣', name: '寿司', desc: '日本国民料理' },
+    { emoji: '🍶', name: '清酒 / 烧酒', desc: '深夜看球标配' },
+    { emoji: '🍜', name: '拉面', desc: '凌晨 4 点的能量来源' },
+  ],
+  '中国': [
+    { emoji: '🍺', name: '啤酒 + 花生', desc: '标准配置' },
+    { emoji: '🍢', name: '烧烤 + 小龙虾', desc: '国足球迷的标配' },
+    { emoji: '🥜', name: '瓜子 + 花生 + 八宝菜', desc: '传统看球零食' },
+  ],
+  '美国': [
+    { emoji: '🍔', name: '汉堡', desc: '美式标配' },
+    { emoji: '🍟', name: '薯条', desc: '看球经典搭配' },
+    { emoji: '🍺', name: '美式啤酒', desc: 'NBA / NFL 同款' },
+  ],
+};
+
+// ============================================================
+// 工具函数
+// ============================================================
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+let toastTimer = null;
+function showToast(message, type = 'info') {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `toast show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.className = 'toast';
+  }, 2400);
+}
+
+// ============================================================
+// 视频背景（MP4 留给用户后续提供）
+// ============================================================
+
+function initVideoBackground() {}
+
+// ============================================================
+// 时钟
+// ============================================================
+
+function initClock() {
+  const el = document.getElementById('clock');
+  if (!el) return;
+  const update = () => {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    el.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+  update();
+  setInterval(update, 1000);
+}
+
+// ============================================================
+// 频道切换
+// ============================================================
+
+const CHANNEL_IDS = ['translate', 'guozu', 'keymatch', 'qualify', 'rookie', 'food', 'live'];
+
+function switchChannel(id) {
+  if (!CHANNEL_IDS.includes(id)) return;
+
+  document.querySelectorAll('.channel-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.channel === id);
+  });
+  document.querySelectorAll('.show').forEach(show => {
+    show.classList.toggle('active', show.dataset.show === id);
+  });
+
+  // 独立版无 SDK resize
+}
+
+function initChannels() {
+  document.querySelectorAll('.channel-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchChannel(item.dataset.channel);
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+
+    const current = document.querySelector('.show.active')?.dataset.show;
+    const idx = CHANNEL_IDS.indexOf(current);
+    if (idx === -1) return;
+
+    const next = e.key === 'ArrowDown'
+      ? CHANNEL_IDS[Math.min(idx + 1, CHANNEL_IDS.length - 1)]
+      : CHANNEL_IDS[Math.max(idx - 1, 0)];
+
+    if (next !== current) switchChannel(next);
+    e.preventDefault();
+  });
+}
+
+// ============================================================
+// CH 01 · AI 翻译器
+// ============================================================
+
+function renderTranslatePresets() {
+  const c = document.getElementById('translatePresets');
+  if (!c) return;
+  c.innerHTML = Object.keys(translationDB).map(k =>
+    `<span class="pill" data-key="${escapeHtml(k)}">${translationDB[k].icon} ${escapeHtml(k)}</span>`
+  ).join('');
+  c.querySelectorAll('.pill').forEach(p => {
+    p.addEventListener('click', () => {
+      c.querySelectorAll('.pill').forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      renderTranslateCards(p.dataset.key, translationCards[p.dataset.key]);
+    });
+  });
+}
+
+function renderTranslateCards(key, cards) {
+  const out = document.getElementById('translateOutput');
+  if (!out) return;
+  if (!cards || !cards.length) {
+    out.innerHTML = `
+      <div class="output-card">
+        <p style="font-weight:900; font-size:16px;">🤔 暂时没有 "${escapeHtml(key)}" 的类比库</p>
+        <p style="margin-top:12px; font-size:13px; color: var(--text-dim);">试试这些热门输入：</p>
+        <div class="row">${Object.keys(translationDB).map(k =>
+          `<span class="pill" onclick="document.querySelector('[data-key=\\'${k}\\']')?.click()">${translationDB[k].icon} ${escapeHtml(k)}</span>`
+        ).join('')}</div>
+        <p style="margin-top:16px; font-size:12px; color:var(--highlight);">💡 或者在上面输入框输入任意领域，让 AI 为你生成！</p>
+      </div>`;
+    return;
+  }
+  const db = translationDB[key];
+  // 自定义领域不在 translationDB 里时用 fallback icon，避免 undefined.icon 报错
+  const icon = (db && db.icon) || '🎲';
+  const cardsHTML = cards.map(c => `
+    <div class="translate-card">
+      <div class="tc-title">${escapeHtml(c.title)}</div>
+      <div class="tc-body">${escapeHtml(c.body)}</div>
+    </div>`).join('');
+  out.innerHTML = `
+    <div style="margin-top:20px;">
+      <div style="font-family: var(--mono); font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 8px;">
+        ▶ ${icon} ${escapeHtml(key)}的世界杯 · ${cards.length} 张类比卡
+      </div>
+      ${cardsHTML}
+    </div>`;
+}
+
+
+function generateAICards(domain) {
+  const out = document.getElementById('translateOutput');
+  if (!out) return;
+  out.innerHTML = '<div class="output-card"><p style="font-weight:900;font-size:16px;">📝 独立 HTML 版本不支持 AI 生成</p><p style="margin-top:8px;font-size:13px;color:var(--text-dim);">请使用 HanaAgent 插件版体验完整 AI 类比生成功能。当前版本可使用上方 14 套预设类比卡。</p></div>';
+}
+
+
+function initTranslate() {
+  renderTranslatePresets();
+
+  const btn = document.getElementById('generateBtn');
+  const customInput = document.getElementById('customDomainInput');
+  if (btn && customInput) {
+    const trigger = () => {
+      const domain = customInput.value.trim();
+      if (!domain) {
+        showToast('请输入领域名', 'error');
+        customInput.focus();
+        return;
+      }
+      if (domain.length > 50) {
+        showToast('领域名太长（≤50 字）', 'error');
+        return;
+      }
+      generateAICards(domain);
+    };
+    btn.addEventListener('click', trigger);
+    customInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        trigger();
+      }
+    });
+  }
+
+  const firstKey = Object.keys(translationCards)[0];
+  if (firstKey) {
+    document.querySelectorAll('#translatePresets .pill').forEach(p => {
+      p.classList.toggle('active', p.dataset.key === firstKey);
+    });
+    renderTranslateCards(firstKey, translationCards[firstKey]);
+  }
+}
+
+// ============================================================
+// CH 02 · 国足预测
+// ============================================================
+
+function calcGuoZu() {
+  const input = document.getElementById('birthInput');
+  const out = document.getElementById('guozuOutput');
+  if (!input || !out) return;
+
+  const birthYear = parseInt(input.value);
+  if (!birthYear || birthYear < 1900 || birthYear > 2026) {
+    showToast('请输入有效的出生年份（1900-2026）', 'error');
+    return;
+  }
+  const currentYear = 2026;
+  const currentAge = currentYear - birthYear;
+  const sawIt = birthYear <= 1982;
+
+  // 入围希望指数：不是概率累加，而是把历届世预赛表现折成 0-100 分。
+  // 2030 以后为基于近期趋势的玩梗推演，首次达到 70 分视为“有戏窗口”。
+  const hopeWindows = [
+    { year: 2002, name: '韩日', score: 100, status: '唯一一次正赛', type: 'history', color: '#2ED573' },
+    { year: 2006, name: '德国', score: 42, status: '接近下一阶段', type: 'history', color: '#FF8C00' },
+    { year: 2010, name: '南非', score: 25, status: '低谷', type: 'history', color: '#FF4757' },
+    { year: 2014, name: '巴西', score: 30, status: '低位徘徊', type: 'history', color: '#FF6348' },
+    { year: 2018, name: '俄罗斯', score: 58, status: '摸回最后阶段', type: 'history', color: '#FFCB05' },
+    { year: 2022, name: '卡塔尔', score: 43, status: '最后阶段但下滑', type: 'history', color: '#FF8C00' },
+    { year: 2026, name: '美加墨', score: 55, status: '18强赛小组第5', type: 'history', color: '#FFCB05' },
+    { year: 2030, name: '西葡摩联合', score: 61, status: '推演窗口', type: 'future', color: '#00D9FF' },
+    { year: 2034, name: '沙特', score: 66, status: '接近有戏线', type: 'future', color: '#00D9FF' },
+    { year: 2038, name: '待定', score: 70, status: '有戏窗口', type: 'future', color: '#2ED573' },
+    { year: 2042, name: '待定', score: 73, status: '延续窗口', type: 'future', color: '#2ED573' },
+  ];
+
+  const threshold = 70;
+  const expectedWindow = hopeWindows.find(w => w.type === 'future' && w.score >= threshold) || hopeWindows[hopeWindows.length - 1];
+  const expected = expectedWindow.year;
+  const age = expected - birthYear;
+  const progressPct = Math.min(100, Math.max(0, (currentAge / Math.max(1, age)) * 100));
+
+  const today = new Date();
+  const daysLived = Math.floor((today - new Date(birthYear, 0, 1)) / (1000 * 60 * 60 * 24));
+  const daysTotal = age * 365;
+  const daysLeft = Math.max(0, daysTotal - daysLived);
+
+  out.innerHTML = `
+    <div class="guozu-headline" style="margin-top:20px;">
+      <div class="gh-meta-line">HOPE INDEX REACHES 70 AT AGE</div>
+      <div class="gh-age">${age}</div>
+      <div class="gh-label">岁时</div>
+      <div class="gh-year">预计 ${expected} 年 · ${expectedWindow.name} · 希望指数 ${expectedWindow.score}/100</div>
+    </div>
+
+    <div style="margin-top: 16px; padding: 20px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;">
+      <div style="font-family: var(--mono); font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 12px;">▶ 人生进度条 / LIFE PROGRESS</div>
+      <div class="progress">
+        <div class="progress-bar" id="guozuProgress" style="width: 0%;">0%</div>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 10px; font-family: var(--mono); font-size: 12px; color: var(--text-dim);">
+        <span>已等 ${currentAge} 年</span>
+        <span>还需 ${age - currentAge > 0 ? (age - currentAge) + ' 年' : '已经结束'}</span>
+      </div>
+      <div style="text-align: center; font-family: var(--mono); font-size: 11px; color: var(--highlight); margin-top: 8px;">
+        = 还要等 ${daysLeft.toLocaleString()} 天
+      </div>
+    </div>
+
+    <div style="margin-top: 16px; padding: 20px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;">
+      <div style="font-family: var(--mono); font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 8px;">▶ 入围希望指数 / HOPE INDEX</div>
+      ${hopeWindows.map(w => {
+        const ageAtW = w.year - birthYear;
+        const label = w.type === 'future' ? '推演' : '历史';
+        return `
+          <div class="window-row">
+            <span class="wr-year">${w.year}</span>
+            <span class="wr-info">${w.name} · ${label} · ${w.status} · 您 ${ageAtW} 岁</span>
+            <span class="wr-prob" style="background: ${w.color}; color: ${w.score <= 30 ? '#fff' : '#1A1A1A'};">${w.score}</span>
+          </div>`;
+      }).join('')}
+    </div>
+
+    <div style="margin-top: 16px; padding: 20px; background: var(--bg); border: 1px solid var(--border); border-left: 4px solid var(--highlight); border-radius: 4px;">
+      <div style="font-family: var(--mono); font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 8px;">▶ 2002 往事</div>
+      <p style="font-size: 14px; line-height: 1.7; color: var(--text);">
+        ${sawIt
+          ? `那年您 ${2002 - birthYear} 岁，国足唯一一次进世界杯。那届 3 场全败丢了 9 球，但无数人至今记得。`
+          : `国足唯一一次进世界杯是 2002 年，那年您还没出生。但别急，这辈子应该还有戏（可能）。`}
+      </p>
+      <p style="font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);">
+        ⚠️ 入围希望指数基于历届世预赛阶段、亚洲区名额和近期表现做玩梗推演，请勿作为投资/人生决策参考。
+      </p>
+    </div>`;
+
+  setTimeout(() => {
+    const bar = document.getElementById('guozuProgress');
+    if (bar) {
+      bar.style.width = progressPct + '%';
+      bar.textContent = Math.round(progressPct) + '%';
+    }
+  }, 100);
+}
+
+function initGuoZu() {
+  const btn = document.getElementById('guozuBtn');
+  const input = document.getElementById('birthInput');
+  if (!btn || !input) return;
+  const trigger = () => calcGuoZu();
+  btn.addEventListener('click', trigger);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); trigger(); }
+  });
+}
+
+// ============================================================
+// CH 03 · 关键战
+// ============================================================
+
+function renderMatches(tab) {
+  const list = document.getElementById('matchList');
+  if (!list) return;
+  if (!_scheduleEvents.length) {
+    list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">[MATCH] 加载真实赛程中…</div>';
+    return;
+  }
+  const groups = pickKeyMatches();
+  const matches = groups[tab] || [];
+  if (!matches.length) {
+    list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">这个 tab 暂无推荐。</div>';
+    return;
+  }
+  list.innerHTML = matches.map(renderKeyMatchCard).join('');
+  list.insertAdjacentHTML('beforeend', `<div style="margin-top:8px;padding:8px;color:var(--text-dim);font-family:var(--mono);font-size:10px;letter-spacing:1px;">▶ 真实赛程 · 编辑筛 · 共 ${_scheduleEvents.length} 场 · ${tab} ${matches.length} 场</div>`);
+}
+
+function initMatches() {
+  const tabs = document.getElementById('matchTabs');
+  if (!tabs) return;
+  tabs.addEventListener('click', e => {
+    if (!e.target.classList.contains('pill')) return;
+    tabs.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    e.target.classList.add('active');
+    renderMatches(e.target.dataset.tab);
+  });
+  renderMatches('老炮');
+  // 后台拉真实赛程
+  loadSchedule().then(ok => {
+    if (ok) {
+      renderMatches(document.querySelector('#matchTabs .pill.active')?.dataset.tab || '老炮');
+    }
+  });
+}
+
+// ============================================================
+// CH 04 · 出线计算器
+// ============================================================
+
+function flagOf(team) { return teamDB[team]?.emoji || '🏳️'; }
+
+async function loadStandings() {
+  try {
+    const r = await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings', { headers: { 'User-Agent': 'WCTV-Standalone/1.0' }, signal: AbortSignal.timeout(8000) });
+    const data = await r.json();
+    _standings = data;
+    return true;
+  } catch (e) {
+    console.warn('[WCTV] standings load failed:', e.message);
+    return false;
+  }
+}
+
+function findEntryForTeam(teamName) {
+  if (!_computedStandings) return null;
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const target = norm(teamName);
+  for (const [grp, list] of Object.entries(_computedStandings)) {
+    for (const [idx, e] of list.entries()) {
+      if (norm(e.abbr) === target) return { group: { abbr: 'Group ' + grp, name: 'Group ' + grp, entries: list }, entry: e, rank: idx + 1 };
+    }
+  }
+  return null;
+}
+
+function findRemainingMatches(teamName) {
+  if (!liveState.events) return [];
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const target = norm(teamName);
+  return liveState.events
+    .filter(e => e.state === 'pre')
+    .filter(e => e.stage && /^Group [A-L]$/.test(e.stage))
+    .filter(e => norm(e.home.name) === target || norm(e.away.name) === target || norm(e.home.abbr) === target || norm(e.away.abbr) === target)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+function projectStatus(entry, group, remaining) {
+  // 2026 赛制：12 个小组，每组前二 + 8 个成绩最好的小组第三晋级 32 强。
+  // 这里做“形势粗算”，完整官方同分规则和小组第三横向比较以 FIFA 公布为准。
+  if (!entry) return '数据获取中…';
+  const played = entry.played || 0;
+  const pts = entry.points || 0;
+  const remCount = remaining.length;
+  const maxPts = pts + remCount * 3;
+  const entries = group.entries || [];
+  const rank = entries.findIndex(e => e.abbr === entry.abbr) + 1;
+
+  if (played === 0 && remCount === 3) return '赛事未开始 · 等首场开球';
+
+  if (played === 3) {
+    if (rank > 0 && rank <= 2) return '✅ 小组前二 · 基本晋级';
+    if (rank === 3 && pts >= 4) return '⚠️ 小组第三 · 大概率要看横向比较';
+    if (rank === 3 && pts === 3) return '🟡 小组第三 · 净胜球和其他组很关键';
+    return '💔 出局风险很高';
+  }
+
+  if (pts >= 6) return `✅ 已拿 ${pts} 分 · 出线主动权很大`;
+  if (maxPts < 4) return `💔 理论最高 ${maxPts} 分 · 形势很危险`;
+  if (rank > 0 && rank <= 2) return `🟢 暂列小组前二 · 最高可到 ${maxPts} 分`;
+  if (rank === 3) return `🟡 暂列小组第三 · 还剩 ${remCount} 场能抢分`;
+  return `剩余 ${remCount} 场 · 理论最高 ${maxPts} 分`;
+}
+
+function initQualify() {
+  const c = document.getElementById('qualifyTeams');
+  const out = document.getElementById('qualifyOutput');
+  if (!c || !out) return;
+
+  async function renderTeam(teamName) {
+    const found = findEntryForTeam(teamName);
+    if (!found) {
+      out.innerHTML = `<div class="ai-error" style="margin-top:20px;">未在 2026 世界杯 12 个小组中找到 "${escapeHtml(teamName)}"。可能不在参赛名单中。</div>`;
+      return;
+    }
+    const { group, entry } = found;
+    const remaining = findRemainingMatches(teamName);
+    const status = projectStatus(entry, group, remaining);
+    const pts = entry.points || 0;
+    const played = entry.played || 0;
+    const remCount = 3 - played;
+    const teamEntry = tTeam(entry.abbr) || { zh: entry.name, flag: '🏳️' };
+
+    c.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll(`#qualifyTeams .pill[data-v="${cssEscape(teamName)}"]`).forEach(p => p.classList.add('active'));
+
+    out.innerHTML = `
+      <div style="margin-top: 20px; padding: 24px; background: var(--bg); border: 1px solid var(--border); border-left: 4px solid var(--secondary); border-radius: 4px;">
+        <div style="font-family: var(--mono); font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 4px;">▶ ${teamEntry.flag} ${escapeHtml(teamEntry.zh)} · 出线形势</div>
+        <div style="font-weight: 900; font-size: 20px; margin: 8px 0; color: var(--highlight); font-family: var(--mono);">${escapeHtml(status)}</div>
+        <div style="display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap;">
+          <div style="background: var(--screen); padding: 12px 16px; border-radius: 4px; min-width: 80px;">
+            <div style="font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 1px;">小组 GROUP</div>
+            <div style="font-family: var(--mono); font-size: 24px; font-weight: 900; color: var(--secondary);">${escapeHtml((group.abbr || group.name || '').replace('Group ', ''))} 组</div>
+          </div>
+          <div style="background: var(--screen); padding: 12px 16px; border-radius: 4px; min-width: 80px;">
+            <div style="font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 1px;">场次 GP</div>
+            <div style="font-family: var(--mono); font-size: 24px; font-weight: 900; color: var(--text);">${played}/3</div>
+          </div>
+          <div style="background: var(--screen); padding: 12px 16px; border-radius: 4px; min-width: 80px;">
+            <div style="font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 1px;">积分 PTS</div>
+            <div style="font-family: var(--mono); font-size: 24px; font-weight: 900; color: var(--highlight);">${pts}</div>
+          </div>
+          <div style="background: var(--screen); padding: 12px 16px; border-radius: 4px; min-width: 80px;">
+            <div style="font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 1px;">胜 平 负</div>
+            <div style="font-family: var(--mono); font-size: 18px; font-weight: 900; color: var(--text);">${entry.wins}-${entry.draws}-${entry.losses}</div>
+          </div>
+          <div style="background: var(--screen); padding: 12px 16px; border-radius: 4px; min-width: 80px;">
+            <div style="font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 1px;">净胜球 GD</div>
+            <div style="font-family: var(--mono); font-size: 24px; font-weight: 900; color: ${entry.gd >= 0 ? 'var(--primary)' : 'var(--signal)'};">${entry.gd > 0 ? '+' : ''}${entry.gd}</div>
+          </div>
+        </div>
+        <div style="font-family: var(--mono); font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-top: 20px; margin-bottom: 8px;">▶ 剩余赛程 REMAINING</div>
+        ${remaining.length === 0 ? '<div style="font-size:13px;color:var(--text-dim);">小组赛已全部完赛或赛程不可用。</div>' : `<ul style="list-style:none;padding:0;line-height:1.8;">
+          ${remaining.map(m => {
+            const hT = tTeam(m.home.abbr);
+            const aT = tTeam(m.away.abbr);
+            return `<li style="padding:6px 0;border-bottom:1px dashed var(--border);display:flex;gap:12px;align-items:center;">
+              <span style="font-family:var(--mono);font-weight:900;color:var(--highlight);min-width:60px;">${formatHm(m.date)}</span>
+              <span style="flex:1;font-size:14px;">${hT.flag} ${escapeHtml(hT.zh)} <span style="color:var(--text-dim);">vs</span> ${escapeHtml(aT.zh)} ${aT.flag}</span>
+              <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);">${escapeHtml(m.venue || '')}</span>
+            </li>`;
+          }).join('')}
+        </ul>`}
+        <div style="font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 12px;">▶ 实时粗算：按已完赛小组赛累加积分，完整同分规则和小组第三横向比较以官方为准。</div>
+        <div style="font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 6px;">▶ 同组对手 ${(group.entries || []).filter(e => e.abbr !== entry.abbr).map(e => { const t = tTeam(e.abbr); return `${t.flag} ${t.zh}`; }).join(' · ')}</div>
+      </div>`;
+  }
+
+  // 先拉真实赛程和积分榜，然后渲染
+  (async () => {
+    try {
+      out.innerHTML = '<div style="margin-top:20px;padding:14px;color:var(--text-dim);font-family:var(--mono);font-size:12px;">正在接收赛场信号，马上刷新出线形势…</div>'; 
+      await Promise.all([loadLiveScores(), loadStandings(), loadSchedule()]);
+      // 自算积分（不依赖 ESPN standings 端点）
+      if (_scheduleEvents.length) {
+        _computedStandings = computeStandingsFromSchedule(_scheduleEvents);
+      }
+      if (!_computedStandings) {
+        out.innerHTML = '<div class="ai-error" style="margin-top:20px;">暂时没接到赛场信号，请稍后再试。</div>'; 
+        return;
+      }
+    } catch (e) {
+      console.error('[WCTV] initQualify failed:', e);
+      out.innerHTML = '<div class="ai-error" style="margin-top:20px;">出线形势加载失败，请稍后再试。</div>'; 
+      return;
+    }
+    // 按小组 group pill（Group A/B/C...）
+    const groups = _computedStandings || {};
+    c.innerHTML = Object.entries(groups).map(([grp, entries]) => `<div style="margin-bottom:14px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:4px;">${escapeHtml(grp)} 组</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${entries.map(e => { const t = tTeam(e.abbr); return `<span class="pill" data-v="${escapeHtml(e.abbr)}" style="font-size:12px;padding:5px 10px;">${t.flag} ${escapeHtml(t.zh)} <span style="color:var(--highlight);">${e.points}</span></span>`; }).join('')}
+      </div>
+    </div>`).join('') + (Object.keys(groups).length ? `<div style="margin-top:12px;padding:8px 10px;background:rgba(0,217,255,0.08);border:1px solid var(--secondary);border-radius:3px;font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:1px;line-height:1.6;">▶ 实时形势：根据已完赛小组赛自动累加积分 · 前二直接晋级，小组第三需横向比较</div>` : '');
+
+    c.addEventListener('click', e => {
+      if (!e.target.classList.contains('pill')) {
+        // 处理 pill 内部的 img 点击
+        const pill = e.target.closest('.pill');
+        if (!pill) return;
+        renderTeam(pill.dataset.v);
+        return;
+      }
+      renderTeam(e.target.dataset.v);
+    });
+
+    // 默认选第一组第一队
+    const firstEntry = Object.values(groups)[0]?.[0];
+    if (firstEntry) renderTeam(firstEntry.abbr);
+  })();
+}
+
+// CSS attr escape for inline style (safe for double-quoted value)
+function cssEscape(s) {
+  return String(s).replace(/"/g, '&quot;');
+}
+
+// ============================================================
+// CH 05 · 伪球迷速成
+// ============================================================
+
+function initRookie() {
+  const c = document.getElementById('rookieTeams');
+  const out = document.getElementById('rookieOutput');
+  if (!c || !out) return;
+
+  c.innerHTML = Object.keys(rookieDB).map(t =>
+    `<span class="pill" data-v="${escapeHtml(t)}">${flagOf(t)} ${escapeHtml(t)}</span>`
+  ).join('');
+
+  c.addEventListener('click', e => {
+    if (!e.target.classList.contains('pill')) return;
+    const team = e.target.dataset.v;
+    const data = rookieDB[team];
+    if (!data) return;
+    const td = teamDB[team] || { color: '#1A1A1A', emoji: '🏳️' };
+
+    c.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    e.target.classList.add('active');
+
+    out.innerHTML = `
+      <div style="margin-top: 20px; padding: 24px; background: var(--bg); border: 1px solid var(--border); border-left: 4px solid var(--highlight); border-radius: 4px;">
+        <div style="font-family: var(--mono); font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 4px;">▶ 伪球迷速成手册</div>
+        <div style="font-size: 24px; font-weight: 900; margin: 4px 0; color: var(--highlight); font-family: var(--mono);">${td.emoji} ${escapeHtml(team)}</div>
+        <ul style="list-style: none; padding: 0; margin-top: 16px;">
+          ${data.map((item, i) => `
+            <li style="padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start;">
+              <span style="font-family: var(--mono); color: var(--secondary); font-size: 12px; font-weight: 900; min-width: 24px;">0${i + 1}</span>
+              <span style="flex: 1; font-size: 14px; line-height: 1.6;">${escapeHtml(item)}</span>
+            </li>`).join('')}
+        </ul>
+      </div>`;
+  });
+}
+
+// ============================================================
+// CH 06 · 夜宵
+// ============================================================
+
+function initFood() {
+  const c = document.getElementById('foodTeams');
+  const out = document.getElementById('foodOutput');
+  if (!c || !out) return;
+
+  c.innerHTML = Object.keys(foodDB).map(t =>
+    `<span class="pill" data-v="${escapeHtml(t)}">${flagOf(t)} ${escapeHtml(t)}</span>`
+  ).join('');
+
+  c.addEventListener('click', e => {
+    if (!e.target.classList.contains('pill')) return;
+    const team = e.target.dataset.v;
+    const data = foodDB[team];
+    if (!data) return;
+    const td = teamDB[team] || { color: '#1A1A1A', emoji: '🏳️' };
+
+    c.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    e.target.classList.add('active');
+
+    out.innerHTML = `
+      <div style="margin-top: 20px;">
+        <div style="display: inline-block; background: var(--highlight); color: var(--bg); padding: 6px 14px; border-radius: 3px; font-family: var(--mono); font-weight: 900; font-size: 13px; letter-spacing: 1px;">▶ ${td.emoji} ${escapeHtml(team)} 看球夜宵</div>
+        ${data.map(f => `
+          <div class="food-item">
+            <span class="food-emoji">${f.emoji}</span>
+            <div>
+              <div class="food-name">${escapeHtml(f.name)}</div>
+              <div class="food-desc">${escapeHtml(f.desc)}</div>
+            </div>
+          </div>`).join('')}
+      </div>`;
+  });
+}
+
+// ============================================================
+// CH 07 · 实时信号台
+// ============================================================
+
+function computeNextKickoff() {
+  // 走 loadLiveScores() 拉真实赛程，初始为占位。
+  return new Date(Date.now() + 90 * 60 * 1000);
+}
+
+// liveState 现在从 /api/live-scores 拉 ESF 真实数据。初始是空，仅用于占位。
+const liveState = {
+  source: 'loading',
+  fetchedAt: null,
+  live: null,        // 进行中的比赛
+  next: null,        // 下一场
+  events: [],        // 全部赛程
+};
+
+let currentScDay = '今天';
+
+function formatHm(date) {
+  // 接受 ISO 字符串或 Date，返回 HH:MM（本地时区）
+  const d = (date instanceof Date) ? date : new Date(date);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function statusBadgeText(state) {
+  if (state === 'in') return ['live', '● 直播中'];
+  if (state === 'post') return ['finished', '完场'];
+  return ['upcoming', '未开'];
+}
+
+function renderToday() {
+  const c = document.getElementById('todayList');
+  if (!c) return;
+  // 今天事件：取 events 里“今天”且包含 live + next + 全部 today events
+  const now = Date.now();
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
+  const todays = liveState.events.filter(e => {
+    const t = new Date(e.date).getTime();
+    return t >= dayStart.getTime() && t < dayEnd.getTime();
+  });
+  // 如果今天没比赛，展示下一场
+  const showList = todays.length ? todays : (liveState.next ? [liveState.next] : []);
+  c.innerHTML = showList.map(m => {
+    const [stCls, stText] = statusBadgeText(m.state);
+    const score = m.state === 'pre' ? 'vs' : `${m.home.score} - ${m.away.score}`;
+    const hTeam = tTeam(m.home.abbr);
+    const aTeam = tTeam(m.away.abbr);
+    return `<div class="today-item">
+      <span class="ti-time">${formatHm(m.date)}</span>
+      <span class="ti-status ${stCls}">${stText}</span>
+      <span class="ti-teams">${hTeam.flag} ${escapeHtml(hTeam.zh)} vs ${escapeHtml(aTeam.zh)} ${aTeam.flag}</span>
+      <span class="ti-score">${score}</span>
+    </div>`;
+  }).join('') || '<div style="padding:14px;color:var(--text-dim);font-size:12px;">暂无今日赛事。</div>';
+}
+
+function renderLiveCard() {
+  const wrap = document.getElementById('liveCardWrap');
+  if (!wrap) return;
+  const m = liveState.live;
+  if (!m) {
+    wrap.innerHTML = `<div style="margin-top:16px;padding:18px 20px;background:var(--bg);border:1px dashed var(--border);border-radius:4px;color:var(--text-dim);font-size:13px;">▶ 暂无正在进行的比赛。下一场：<strong style="color:var(--highlight);">${escapeHtml(liveState.next ? `${liveState.next.home.name} vs ${liveState.next.away.name}` : '—')}</strong></div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="live-card">
+      <div class="live-card-head">
+        <span class="lch-badge">● LIVE</span>
+        <span class="lch-min">${m.displayClock || m.minute + "'"}</span>
+      </div>
+      <div class="score-row">
+        <div class="score-team"><span class="flag">🏳️</span><span>${escapeHtml(m.home.name || m.home.abbr || '?')}</span></div>
+        <div class="score-big">${m.home.score} <span class="score-vs">:</span> ${m.away.score}</div>
+        <div class="score-team away"><span>${escapeHtml(m.away.name || m.away.abbr || '?')}</span><span class="flag">🏳️</span></div>
+      </div>
+      ${m.venue ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:8px;">📍 ${escapeHtml(m.venue)}</div>` : ''}
+      ${m.broadcasts && m.broadcasts.length ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:8px;">📺 ${escapeHtml(m.broadcasts.join(' · '))}</div>` : ''}
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:14px;">▶ 数据源：${escapeHtml(liveState.source || 'ESPN')} · 缓存 ${(Date.now() - new Date(liveState.fetchedAt).getTime() / 1000).toFixed(0)}s 前刷新</div>
+    </div>`;
+}
+
+function localMmDd(date) {
+  // 本地时区下的 MM-DD（不用 UTC，避开跨日时区错位）
+  const d = (date instanceof Date) ? date : new Date(date);
+  return String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function renderScheduleTabs() {
+  const tabs = document.getElementById('scTabs');
+  if (!tabs) return;
+  // 按本地“今天 / 明天 / 后天 / M月D日” 分组
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const dayKeys = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now); d.setDate(d.getDate() + i);
+    dayKeys.push(localMmDd(d));
+  }
+  const groups = Object.fromEntries(dayKeys.map(k => [k, []]));
+  for (const e of liveState.events) {
+    const k = localMmDd(e.date);
+    if (groups[k]) groups[k].push(e);
+  }
+  const labels = ['今天', '明天', '后天'];
+  let labelIdx = 0;
+  const ordered = dayKeys.map(k => {
+    const lab = labelIdx < 3 ? labels[labelIdx++] : k;
+    return [lab, groups[k]];
+  }).filter(([, list]) => list.length);
+  tabs.innerHTML = ordered.map(([label]) =>
+    `<span class="pill${label === currentScDay ? ' active' : ''}" data-day="${label}">${label}</span>`
+  ).join('');
+  if (!ordered.find(([l]) => l === currentScDay)) currentScDay = ordered[0]?.[0] || '今天';
+  renderScheduleList(ordered);
+}
+
+function renderScheduleList(ordered) {
+  const list = document.getElementById('scList');
+  if (!list) return;
+  let events;
+  if (ordered) {
+    events = ordered.find(([l]) => l === currentScDay)?.[1] || [];
+  } else {
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const days = ['今天', '明天', '后天'];
+    const dayKeys = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now); d.setDate(d.getDate() + i);
+      dayKeys.push(localMmDd(d));
+    }
+    const targetKey = dayKeys[['今天', '明天', '后天'].indexOf(currentScDay)] || dayKeys[0];
+    events = liveState.events.filter(e => localMmDd(e.date) === targetKey);
+  }
+  if (!events.length) {
+    list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">这天没赛事。</div>';
+    return;
+  }
+  list.innerHTML = events.map(m => {
+    const [bdCls, bdText] = statusBadgeText(m.state);
+    const hTeam = tTeam(m.home.abbr);
+    const aTeam = tTeam(m.away.abbr);
+    return `<div class="sc-item">
+      <span class="sc-time">${formatHm(m.date)}</span>
+      <span class="sc-teams">${hTeam.flag} ${escapeHtml(hTeam.zh)} vs ${escapeHtml(aTeam.zh)} ${aTeam.flag}</span>
+      <span class="sc-badge ${bdCls}">${bdText}</span>
+    </div>`;
+  }).join('');
+}
+
+function bindScheduleTabs() {
+  const tabs = document.getElementById('scTabs');
+  if (!tabs) return;
+  tabs.addEventListener('click', e => {
+    if (!e.target.classList.contains('pill')) return;
+    tabs.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    e.target.classList.add('active');
+    currentScDay = e.target.dataset.day;
+    renderScheduleList();
+  });
+}
+
+function renderCountdown() {
+  const match = document.getElementById('cdMatch');
+  const meta = document.getElementById('cdMeta');
+  if (!match || !meta) return;
+  const m = liveState.next;
+  if (!m) {
+    match.textContent = '暂无下一场';
+    meta.textContent = `数据源：${liveState.source || 'ESPN'}`;
+    ['cdD', 'cdH', 'cdM', 'cdS'].forEach(id => document.getElementById(id).textContent = '--');
+    return;
+  }
+  match.textContent = `${m.home.name || m.home.abbr} vs ${m.away.name || m.away.abbr}`;
+  meta.textContent = `${m.venue || ''} · ${m.broadcasts?.join(' · ') || ''} · ${m.detail || m.status}`;
+  const kickoff = new Date(m.date).getTime();
+  const diff = kickoff - Date.now();
+  const zero = () => ['cdD', 'cdH', 'cdM', 'cdS'].forEach(id => document.getElementById(id).textContent = '00');
+  if (diff <= 0) { zero(); return; }
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff / 3600000) % 24);
+  const mi = Math.floor((diff / 60000) % 60);
+  const s = Math.floor((diff / 1000) % 60);
+  document.getElementById('cdD').textContent = String(d).padStart(2, '0');
+  document.getElementById('cdH').textContent = String(h).padStart(2, '0');
+  document.getElementById('cdM').textContent = String(mi).padStart(2, '0');
+  document.getElementById('cdS').textContent = String(s).padStart(2, '0');
+}
+
+async function loadLiveScores() {
+  try {
+    const r = await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard', { headers: { 'User-Agent': 'WCTV-Standalone/1.0' }, signal: AbortSignal.timeout(8000) });
+    const data = await r.json();
+    liveState.source = data.source || 'ESPN';
+    liveState.fetchedAt = data.fetchedAt;
+    liveState.live = data.live || null;
+    liveState.next = data.next || null;
+    liveState.events = data.events || [];
+    return true;
+  } catch (e) {
+    console.warn('[WCTV] live-scores load failed:', e.message);
+    return false;
+  }
+}
+
+function initLive() {
+  renderCountdown();
+  renderToday();
+  renderLiveCard();
+  renderScheduleTabs();
+  bindScheduleTabs();
+  setInterval(renderCountdown, 1000);
+  // 拉一次 + 每 30 秒刷一次（后端 30s 缓存，刚好）
+  loadLiveScores().then(() => {
+    renderCountdown();
+    renderToday();
+    renderLiveCard();
+    renderScheduleTabs();
+  });
+  setInterval(async () => {
+    const ok = await loadLiveScores();
+    if (ok) {
+      renderCountdown();
+      renderToday();
+      renderLiveCard();
+      renderScheduleTabs();
+    }
+  }, 30000);
+}
+
+// ============================================================
+// 主题适配
+// ============================================================
+
+function initThemeBridge() {
+  // 独立版无主题 SDK，保持默认暗色主题
+}
+
+// ============================================================
+// 启动
+// ============================================================
+
+function init() {
+  initThemeBridge();
+  initClock();
+  initVideoBackground();
+  initChannels();
+  initTranslate();
+  initGuoZu();
+  initMatches();
+  initQualify();
+  initRookie();
+  initFood();
+  initLive();
+}
+
+init();
+init();</script>
+</body>
+</html>
